@@ -4,3 +4,4 @@ cache/
 .history/
 *.exe
 *.pdb
+mpv/
