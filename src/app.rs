@@ -1616,6 +1616,12 @@ impl eframe::App for VideoPlayerApp {
                         self.show_folder_management_window = true;
                     }
                     
+                    // Button to open/show MPV shortcuts panel
+                    if ui.button("Show MPV Shortcuts").clicked() {
+                        self.mpv_shortcuts_open = true;
+                        settings_changed = true;
+                    }
+                    
                     ui.separator();
                     
                     if ui.button("Reset to Default").clicked() {
@@ -1894,7 +1900,7 @@ impl eframe::App for VideoPlayerApp {
 impl VideoPlayerApp {
     fn show_grid_view(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, videos: &[VideoFile]) {
         let available_width = ui.available_width();
-        let base_item_width = 200.0;
+        let base_item_width = 205.0;
         let item_width = base_item_width * self.thumbnail_scale;
         let spacing = 10.0;
         let items_per_row = ((available_width + spacing) / (item_width + spacing)).floor().max(1.0) as usize;
@@ -1909,7 +1915,7 @@ impl VideoPlayerApp {
                                          self.selected_video.as_ref() == Some(&video.id);
                         
                         // Thumbnail with selection highlight
-                        let base_thumbnail_size = egui::vec2(180.0, 135.0);
+                        let base_thumbnail_size = egui::vec2(185.0, 142.0);
                         let thumbnail_size = base_thumbnail_size * self.thumbnail_scale;
                         
                         // Try to load actual thumbnail image
