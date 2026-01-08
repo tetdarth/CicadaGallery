@@ -19,6 +19,31 @@ Rust製の動画管理・再生アプリケーションです。
 
 - MP4, AVI, MKV, MOV, WMV, FLV, WebM, M4V, MPG, MPEG
 
+## 依存関係
+
+このアプリケーションは以下の外部ツールを必要とします：
+
+### MPV (必須)
+
+動画再生にMPVを使用しています。
+
+1. [MPV公式サイト](https://mpv.io/)から最新版をダウンロード
+2. ダウンロードしたファイルを解凍
+3. `mpv.exe` をプロジェクトの `mpv/` フォルダに配置
+
+または、プロジェクト内のインストーラーを使用：
+```bash
+cd mpv/installer
+./mpv-install.bat
+```
+
+### FFmpeg (推奨)
+
+サムネイル生成と動画解析に使用されます。
+
+1. [FFmpeg公式サイト](https://ffmpeg.org/download.html)からWindows版をダウンロード
+2. システムPATHに追加するか、実行ファイルと同じディレクトリに配置
+
 ## 実行方法
 
 ```bash
