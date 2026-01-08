@@ -41,6 +41,25 @@ impl VideoFile {
         
         let id = uuid::Uuid::new_v4().to_string();
         
+        // Try to get file creation time, fall back to modified time, then to current time
+        let added_date = std::fs::metadata(&path)
+            .ok()
+            .and_then(|metadata| {
+                metadata.created()
+                    .or_else(|_| metadata.modified())
+                    .ok()
+            })
+            .and_then(|system_time| {
+                use std::time::UNIX_EPOCH;
+                system_time.duration_since(UNIX_EPOCH)
+                    .ok()
+                    .map(|duration| {
+                        DateTime::<Utc>::from_timestamp(duration.as_secs() as i64, duration.subsec_nanos())
+                            .unwrap_or_else(|| Utc::now())
+                    })
+            })
+            .unwrap_or_else(|| Utc::now());
+        
         Self {
             id,
             path,
@@ -53,7 +72,7 @@ impl VideoFile {
             folder: None,
             rating: 0,
             is_favorite_legacy: None,
-            added_date: Utc::now(),
+            added_date,
             last_played: None,
             scenes: Vec::new(),
         }
@@ -86,6 +105,10 @@ impl VideoDatabase {
     }
     
     pub fn add_video(&mut self, video: VideoFile) {
+        // Add folder to folders list if it doesn't exist
+        if let Some(ref folder) = video.folder {
+            self.add_folder(folder.clone());
+        }
         self.videos.push(video);
     }
     
@@ -138,7 +161,18 @@ impl VideoDatabase {
     
     /// Get a mutable reference to a video by its path
     pub fn get_video_by_path_mut(&mut self, path: &std::path::PathBuf) -> Option<&mut VideoFile> {
-        self.videos.iter_mut().find(|v| v.path == *path)
+        // Try to canonicalize both paths for comparison
+        let canonical_path = path.canonicalize().ok();
+        
+        self.videos.iter_mut().find(|v| {
+            if let Some(ref target) = canonical_path {
+                if let Ok(v_canonical) = v.path.canonicalize() {
+                    return v_canonical == *target;
+                }
+            }
+            // Fallback to direct comparison if canonicalization fails
+            v.path == *path
+        })
     }
     
     /// Get all unique parent folders from video paths
@@ -147,6 +181,35 @@ impl VideoDatabase {
             .iter()
             .filter_map(|v| v.path.parent().map(|p| p.to_path_buf()))
             .collect()
+    }
+    
+    /// Remove duplicate videos from the database (keep the first occurrence)
+    pub fn remove_duplicates(&mut self) -> usize {
+        use std::collections::HashMap;
+        
+        let mut seen_paths: HashMap<std::path::PathBuf, usize> = HashMap::new();
+        let mut duplicates_indices = Vec::new();
+        
+        for (idx, video) in self.videos.iter().enumerate() {
+            // Try to canonicalize the path
+            let key = video.path.canonicalize().unwrap_or_else(|_| video.path.clone());
+            
+            if let Some(&first_idx) = seen_paths.get(&key) {
+                // This is a duplicate, mark for removal
+                eprintln!("[remove_duplicates] Found duplicate: {:?} (keeping index {}, removing {})", video.path, first_idx, idx);
+                duplicates_indices.push(idx);
+            } else {
+                seen_paths.insert(key, idx);
+            }
+        }
+        
+        // Remove duplicates in reverse order to maintain correct indices
+        let count = duplicates_indices.len();
+        for idx in duplicates_indices.iter().rev() {
+            self.videos.remove(*idx);
+        }
+        
+        count
     }
     
     /// Remove unused tags from the database
@@ -170,6 +233,31 @@ impl VideoDatabase {
         
         self.folders.retain(|folder| used_folders.contains(folder));
     }
+    
+    /// Update added_date for all videos based on file metadata
+    /// Uses file creation time if available, otherwise uses modified time
+    pub fn update_added_dates_from_files(&mut self) {
+        use std::time::UNIX_EPOCH;
+        
+        for video in &mut self.videos {
+            if let Ok(metadata) = std::fs::metadata(&video.path) {
+                let file_time = metadata.created()
+                    .or_else(|_| metadata.modified())
+                    .ok();
+                
+                if let Some(system_time) = file_time {
+                    if let Ok(duration) = system_time.duration_since(UNIX_EPOCH) {
+                        if let Some(datetime) = DateTime::<Utc>::from_timestamp(
+                            duration.as_secs() as i64,
+                            duration.subsec_nanos()
+                        ) {
+                            video.added_date = datetime;
+                        }
+                    }
+                }
+            }
+        }
+    }
 }
 
 /// Application settings
@@ -185,6 +273,16 @@ pub struct AppSettings {
     pub selected_shader: Option<String>, // Selected shader filename
     pub use_frame_interpolation: bool,
     pub language: Language, // UI language
+    #[serde(default)]
+    pub added_dates_updated: bool, // Flag to track if added_date has been updated from file metadata
+    #[serde(default)]
+    pub watched_folders: Vec<std::path::PathBuf>, // Folders being watched for changes
+    #[serde(default = "default_mpv_shortcuts_open")]
+    pub mpv_shortcuts_open: bool, // MPV shortcuts panel open/collapsed state
+}
+
+fn default_mpv_shortcuts_open() -> bool {
+    true
 }
 
 impl Default for AppSettings {
@@ -200,6 +298,7 @@ impl Default for AppSettings {
             selected_shader: None,
             use_frame_interpolation: false,
             language: Language::default(),
-        }
+            added_dates_updated: false,
+            watched_folders: Vec::new(),            mpv_shortcuts_open: true,        }
     }
 }

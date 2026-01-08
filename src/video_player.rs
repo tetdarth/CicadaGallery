@@ -261,6 +261,10 @@ pub fn play_video_at_timestamp(video_path: &Path, timestamp_seconds: f64, always
             args.extend(gpu_hq_args.iter().map(|s| s.to_string()));
         }
         
+        if use_frame_interpolation {
+            args.extend(frame_interpolation_args.iter().map(|s| s.to_string()));
+        }
+        
         // Add custom shader arguments
         args.extend(shader_args.clone());
         

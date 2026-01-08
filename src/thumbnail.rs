@@ -26,8 +26,8 @@ pub fn create_video_thumbnail(video_path: &Path, cache_dir: &Path) -> Option<Pat
     }
     
     // Generate thumbnail using FFmpeg at 5 seconds position
-    let result = Command::new("ffmpeg")
-        .args(&[
+    let mut cmd = Command::new("ffmpeg");
+    cmd.args(&[
             "-ss", "5.0",  // Seek to 5 seconds
             "-i", video_path.to_str()?,
             "-vframes", "1",  // Extract one frame
@@ -35,8 +35,17 @@ pub fn create_video_thumbnail(video_path: &Path, cache_dir: &Path) -> Option<Pat
             "-vf", "scale=320:-1",  // Scale to width 320, maintain aspect ratio
             "-y",  // Overwrite output file
             thumbnail_path.to_str()?
-        ])
-        .output();
+        ]);
+    
+    // Hide console window on Windows
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    
+    let result = cmd.output();
     
     // Check if FFmpeg succeeded
     if result.is_ok() && thumbnail_path.exists() {

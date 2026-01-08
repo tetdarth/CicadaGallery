@@ -9,6 +9,10 @@ use eframe::egui;
 use rfd::FileDialog;
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+use notify::{Watcher, RecursiveMode, Event};
+use std::sync::mpsc::{channel, Receiver};
+use std::time::SystemTime;
 
 pub struct VideoPlayerApp {
     pub database: VideoDatabase,
@@ -19,6 +23,10 @@ pub struct VideoPlayerApp {
     pub selected_tag_filter: Option<String>,
     pub min_rating_filter: u8, // 0 = show all, 1-5 = show videos with rating >= this value
     pub show_options_window: bool,
+    pub show_folder_management_window: bool, // Show folder management window
+    pub show_shader_management_window: bool, // Show shader management window
+    pub show_mpv_shortcuts: bool, // Show mpv keyboard shortcuts panel
+    pub mpv_shortcuts_open: bool, // MPV shortcuts panel open/collapsed state
     pub thumbnail_scale: f32, // 0.5 to 3.0 (50% to 300%)
     pub scene_panel_visible: bool, // Show/hide scene panel
     pub texture_cache: HashMap<PathBuf, egui::TextureHandle>,
@@ -31,6 +39,7 @@ pub struct VideoPlayerApp {
     pub last_selected_scene: Option<usize>, // Last selected scene index for shift-click range selection
     pub show_tag_add_popup: bool, // Show tag addition popup
     pub new_tag_input: String, // Input for new tag creation
+    pub new_folder_input: String, // Input for new folder creation
     pub show_full_filename: bool, // Show full filename in grid view
     pub show_tags_in_grid: bool, // Show tags in grid view
     pub dark_mode: bool, // Dark mode theme
@@ -42,6 +51,11 @@ pub struct VideoPlayerApp {
     pub metadata_loaded: HashSet<String>, // Videos that have completed metadata loading
     pub sort_field: SortField, // Current sort field
     pub sort_order: SortOrder, // Current sort order
+    pub watched_folders: HashSet<PathBuf>, // Folders being watched for changes
+    pub fs_watcher: Option<notify::RecommendedWatcher>, // File system watcher
+    pub fs_events: Option<Arc<Mutex<Receiver<Result<Event, notify::Error>>>>>, // Channel for file system events
+    pub pending_rescan: bool, // Flag to trigger rescan on next update
+    pub last_rescan_time: SystemTime, // Last time a rescan was performed
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -66,10 +80,28 @@ pub enum SortOrder {
 impl Default for VideoPlayerApp {
     fn default() -> Self {
         // Load database
-        let database = database::load_database().unwrap_or_else(|_| VideoDatabase::new());
+        let mut database = database::load_database().unwrap_or_else(|_| VideoDatabase::new());
         
         // Load settings
-        let settings = database::load_settings().unwrap_or_default();
+        let mut settings = database::load_settings().unwrap_or_default();
+        
+        // Update added_date from file metadata for all existing videos (only once)
+        if !settings.added_dates_updated && !database.videos.is_empty() {
+            eprintln!("[init] Updating added_date for all videos from file metadata");
+            database.update_added_dates_from_files();
+            let _ = database::save_database(&database);
+            
+            // Mark as updated
+            settings.added_dates_updated = true;
+            let _ = database::save_settings(&settings);
+        }
+        
+        // Remove duplicate videos (only once per session, at startup)
+        let duplicate_count = database.remove_duplicates();
+        if duplicate_count > 0 {
+            eprintln!("[init] Removed {} duplicate videos", duplicate_count);
+            let _ = database::save_database(&database);
+        }
         
         // Initialize i18n with loaded language
         let i18n = I18n::new(settings.language);
@@ -83,6 +115,10 @@ impl Default for VideoPlayerApp {
             selected_tag_filter: None,
             min_rating_filter: 0,
             show_options_window: false,
+            show_folder_management_window: false,
+            show_shader_management_window: false,
+            show_mpv_shortcuts: true,
+            mpv_shortcuts_open: settings.mpv_shortcuts_open,
             thumbnail_scale: settings.thumbnail_scale,
             scene_panel_visible: true,
             texture_cache: HashMap::new(),
@@ -95,6 +131,7 @@ impl Default for VideoPlayerApp {
             last_selected_scene: None,
             show_tag_add_popup: false,
             new_tag_input: String::new(),
+            new_folder_input: String::new(),
             show_full_filename: settings.show_full_filename,
             show_tags_in_grid: settings.show_tags_in_grid,
             dark_mode: settings.dark_mode,
@@ -106,6 +143,11 @@ impl Default for VideoPlayerApp {
             metadata_loaded: HashSet::new(),
             sort_field: SortField::AddedDate,
             sort_order: SortOrder::Descending,
+            watched_folders: settings.watched_folders.into_iter().collect(),
+            fs_watcher: None,
+            fs_events: None,
+            pending_rescan: false,
+            last_rescan_time: SystemTime::now(),
         }
     }
 }
@@ -170,6 +212,9 @@ impl VideoPlayerApp {
             selected_shader: self.selected_shader.clone(),
             use_frame_interpolation: self.use_frame_interpolation,
             language: self.i18n.get_language(),
+            added_dates_updated: true, // Keep as true to avoid re-updating
+            watched_folders: self.watched_folders.iter().cloned().collect(),
+            mpv_shortcuts_open: self.mpv_shortcuts_open,
         };
         
         if let Err(e) = database::save_settings(&settings) {
@@ -205,7 +250,44 @@ impl VideoPlayerApp {
         if let Some(folder) = FileDialog::new().pick_folder() {
             let cache_dir = thumbnail::get_cache_dir();
             let mut videos = video_scanner::scan_directory(folder.clone());
+            
+            eprintln!("[add_folder] Scanned {} videos from folder: {:?}", videos.len(), folder);
+            eprintln!("[add_folder] Current database has {} videos", self.database.videos.len());
+            
+            // Get existing video paths for quick lookup (normalized for case-insensitive comparison)
+            let existing_paths: HashSet<PathBuf> = self.database.videos.iter()
+                .filter_map(|v| {
+                    // Canonicalize path to handle case-insensitivity and path normalization
+                    match v.path.canonicalize() {
+                        Ok(p) => Some(p),
+                        Err(e) => {
+                            eprintln!("[add_folder] Warning: Failed to canonicalize existing path {:?}: {}", v.path, e);
+                            None
+                        }
+                    }
+                })
+                .collect();
+            
+            eprintln!("[add_folder] Built index of {} existing canonical paths", existing_paths.len());
+            
             for video in videos.iter_mut() {
+                // Canonicalize the scanned video path for comparison
+                let canonical_path = match video.path.canonicalize() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("[add_folder] Failed to canonicalize path {:?}: {}", video.path, e);
+                        continue;
+                    }
+                };
+                
+                // Skip if video already exists in database
+                if existing_paths.contains(&canonical_path) {
+                    eprintln!("[add_folder] Skipping existing video: {:?}", video.path);
+                    continue;
+                }
+                
+                eprintln!("[add_folder] Adding new video: {:?}", video.path);
+                
                 // Generate thumbnail
                 video.thumbnail_path = thumbnail::create_video_thumbnail(&video.path, &cache_dir);
                 
@@ -215,28 +297,79 @@ impl VideoPlayerApp {
                 
                 self.database.add_video(video.clone());
             }
+            
+            // Add folder to watched folders
+            self.watched_folders.insert(folder.clone());
+            self.setup_folder_watcher();
+            
             // Save database
             let _ = database::save_database(&self.database);
         }
     }
     
     pub fn rescan_folders(&mut self) {
-        let folders: HashSet<String> = self.database.videos.iter()
-            .filter_map(|v| v.folder.clone())
-            .collect();
+        // Only rescan folders that are in watched_folders (explicitly added by user)
+        // Do not automatically scan all video parent folders
+        let folders = self.watched_folders.clone();
+        
+        if folders.is_empty() {
+            eprintln!("[rescan] No watched folders to scan");
+            return;
+        }
+        
+        eprintln!("[rescan] Rescanning {} watched folders", folders.len());
         
         let cache_dir = thumbnail::get_cache_dir();
+        let mut videos_to_remove = Vec::new();
         
+        // Check for deleted files
+        for video in &self.database.videos {
+            if !video.path.exists() {
+                videos_to_remove.push(video.id.clone());
+            }
+        }
+        
+        // Remove deleted videos
+        for video_id in videos_to_remove {
+            eprintln!("[rescan] Removing deleted video: {}", video_id);
+            self.delete_video(&video_id, true);
+        }
+        
+        // Scan each folder for new or updated files
         for folder_path in folders {
+            if !folder_path.exists() {
+                eprintln!("[rescan] Skipping non-existent folder: {:?}", folder_path);
+                continue;
+            }
+            
+            eprintln!("[rescan] Scanning folder: {:?}", folder_path);
+            
+            // Build normalized path map for existing videos in this folder and subfolders
             let existing_paths: HashSet<PathBuf> = self.database.videos.iter()
-                .filter(|v| v.folder.as_ref().map_or(false, |f| f == &folder_path))
-                .map(|v| v.path.clone())
+                .filter(|v| {
+                    // Check if video path starts with the folder path
+                    v.path.starts_with(&folder_path)
+                })
+                .filter_map(|v| v.path.canonicalize().ok())
                 .collect();
             
-            let scanned_videos = video_scanner::scan_directory(PathBuf::from(&folder_path));
+            eprintln!("[rescan] Found {} existing videos in this folder tree", existing_paths.len());
             
+            let scanned_videos = video_scanner::scan_directory(folder_path.clone());
+            
+            // Add new videos
             for mut video in scanned_videos {
-                if !existing_paths.contains(&video.path) {
+                // Canonicalize the scanned video path for comparison
+                let canonical_path = match video.path.canonicalize() {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("[rescan] Failed to canonicalize path {:?}: {}", video.path, e);
+                        continue;
+                    }
+                };
+                
+                if !existing_paths.contains(&canonical_path) {
+                    eprintln!("[rescan] Found new video: {:?}", video.path);
                     // Generate thumbnail for new video
                     video.thumbnail_path = thumbnail::create_video_thumbnail(&video.path, &cache_dir);
                     
@@ -246,6 +379,23 @@ impl VideoPlayerApp {
                     
                     self.database.add_video(video);
                 } else if let Some(existing_video) = self.database.get_video_by_path_mut(&video.path) {
+                    // Check if file was modified (by comparing file size and modification time)
+                    if let Ok(metadata) = std::fs::metadata(&video.path) {
+                        let file_size = metadata.len();
+                        if existing_video.file_size != file_size {
+                            eprintln!("[rescan] File size changed for: {:?}", video.path);
+                            // Update file size
+                            existing_video.file_size = file_size;
+                            
+                            // Regenerate thumbnail
+                            existing_video.thumbnail_path = thumbnail::create_video_thumbnail(&video.path, &cache_dir);
+                            
+                            // Update metadata
+                            existing_video.duration = get_video_duration(&video.path);
+                            existing_video.resolution = get_video_resolution(&video.path);
+                        }
+                    }
+                    
                     // Update missing metadata
                     if existing_video.duration.is_none() {
                         existing_video.duration = get_video_duration(&video.path);
@@ -260,6 +410,10 @@ impl VideoPlayerApp {
                 }
             }
         }
+        
+        // Update last rescan time
+        self.last_rescan_time = SystemTime::now();
+        self.pending_rescan = false;
         
         let _ = database::save_database(&self.database);
     }
@@ -427,6 +581,85 @@ impl VideoPlayerApp {
         self.selected_videos.clear();
     }
     
+    /// Setup file system watcher for monitored folders
+    pub fn setup_folder_watcher(&mut self) {
+        // Collect all folders to watch from database
+        let folders: HashSet<PathBuf> = self.database.videos.iter()
+            .filter_map(|v| v.path.parent().map(|p| p.to_path_buf()))
+            .collect();
+        
+        self.watched_folders = folders.clone();
+        
+        // Create a channel for receiving events
+        let (tx, rx) = channel();
+        let rx = Arc::new(Mutex::new(rx));
+        
+        // Create a new watcher
+        match notify::recommended_watcher(move |res| {
+            if let Err(e) = tx.send(res) {
+                eprintln!("Error sending watch event: {:?}", e);
+            }
+        }) {
+            Ok(mut watcher) => {
+                // Watch all folders
+                for folder in &self.watched_folders {
+                    if folder.exists() {
+                        if let Err(e) = watcher.watch(folder, RecursiveMode::Recursive) {
+                            eprintln!("Failed to watch folder {:?}: {:?}", folder, e);
+                        } else {
+                            eprintln!("[watcher] Watching folder: {:?}", folder);
+                        }
+                    }
+                }
+                
+                self.fs_watcher = Some(watcher);
+                self.fs_events = Some(rx);
+            }
+            Err(e) => {
+                eprintln!("Failed to create file system watcher: {:?}", e);
+            }
+        }
+    }
+    
+    /// Check for file system changes and trigger rescan if needed
+    pub fn check_folder_changes(&mut self) {
+        if let Some(rx) = &self.fs_events {
+            if let Ok(rx_guard) = rx.lock() {
+                // Check for pending events
+                let mut has_changes = false;
+                
+                // Process all pending events
+                while let Ok(result) = rx_guard.try_recv() {
+                    match result {
+                        Ok(event) => {
+                            // Check if the event is related to video files
+                            for path in &event.paths {
+                                if path.is_file() && VideoFile::is_video_file(path) {
+                                    eprintln!("[watcher] Detected change: {:?}", path);
+                                    has_changes = true;
+                                    break;
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("Watch error: {:?}", e);
+                        }
+                    }
+                }
+                
+                // Set pending rescan flag if changes detected
+                if has_changes {
+                    // Only trigger rescan if enough time has passed since last rescan
+                    if let Ok(elapsed) = self.last_rescan_time.elapsed() {
+                        if elapsed.as_secs() >= 5 {
+                            self.pending_rescan = true;
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
     fn load_image_texture(&mut self, ctx: &egui::Context, image_path: &PathBuf) -> Option<egui::TextureHandle> {
         // Check if already cached - this is fast
         if let Some(texture) = self.texture_cache.get(image_path) {
@@ -460,7 +693,8 @@ impl VideoPlayerApp {
     fn draw_thumbnail_placeholder(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context, thumbnail_size: egui::Vec2, video: &VideoFile) {
         let (rect, response) = ui.allocate_exact_size(thumbnail_size, egui::Sense::click());
         
-        let is_selected = self.selected_videos.contains(&video.id);
+        let is_selected = self.selected_videos.contains(&video.id) || 
+                         self.selected_video.as_ref() == Some(&video.id);
         
         if ui.is_rect_visible(rect) {
             ui.painter().rect_filled(rect, 4.0, egui::Color32::DARK_GRAY);
@@ -492,7 +726,8 @@ impl VideoPlayerApp {
                 self.toggle_video_selection(&video.id);
                 self.last_selected_video = Some(video.id.clone());
             } else {
-                // Single click: select video
+                // Single click: clear multi-select and select only this video
+                self.selected_videos.clear();
                 self.selected_video = Some(video.id.clone());
                 self.scene_panel_visible = true;
                 self.last_selected_video = Some(video.id.clone());
@@ -540,6 +775,7 @@ impl VideoPlayerApp {
             if !video.tags.contains(&tag) {
                 video.tags.push(tag.clone());
                 self.database.add_tag(tag);
+                let _ = database::save_database(&self.database);
             }
         }
     }
@@ -547,6 +783,7 @@ impl VideoPlayerApp {
     pub fn remove_tag_from_video(&mut self, video_id: &str, tag: &str) {
         if let Some(video) = self.database.get_video_mut(video_id) {
             video.tags.retain(|t| t != tag);
+            let _ = database::save_database(&self.database);
             let _ = database::save_database(&self.database);
         }
     }
@@ -633,6 +870,20 @@ impl eframe::App for VideoPlayerApp {
             ctx.set_visuals(egui::Visuals::light());
         }
         
+        // Check for file system changes
+        self.check_folder_changes();
+        
+        // Perform rescan if pending
+        if self.pending_rescan {
+            eprintln!("[app] Triggering automatic rescan due to folder changes");
+            self.rescan_folders();
+        }
+        
+        // Initialize folder watcher if not set up yet and we have videos
+        if self.fs_watcher.is_none() && !self.database.videos.is_empty() {
+            self.setup_folder_watcher();
+        }
+        
         // トップバー
         egui::TopBottomPanel::top("top_panel").show(ctx, |ui| {
             egui::menu::bar(ui, |ui| {
@@ -702,6 +953,10 @@ impl eframe::App for VideoPlayerApp {
                             self.clear_selection();
                         }
                         
+                        if ui.button(&self.i18n.t("add_tag_to_selected")).clicked() {
+                            self.show_tag_add_popup = true;
+                        }
+                        
                         if ui.button(&self.i18n.t("delete_selected")).clicked() {
                             self.delete_confirm_video = Some("__MULTI__".to_string());
                         }
@@ -711,7 +966,7 @@ impl eframe::App for VideoPlayerApp {
         });
         
         // Sidebar (Filters)
-        egui::SidePanel::left("side_panel").min_width(200.0).show(ctx, |ui| {
+        egui::SidePanel::left("side_panel").min_width(220.0).show(ctx, |ui| {
             ui.heading(&self.i18n.t("filters"));
             ui.separator();
             
@@ -957,7 +1212,21 @@ impl eframe::App for VideoPlayerApp {
                                 screen_rect.center().y - 150.0  // 中央より少し上
                             );
                             
-                            egui::Window::new(&self.i18n.t("add_tag"))
+                            // Determine target videos (single or multiple selection)
+                            let target_videos: Vec<String> = if self.selected_videos.is_empty() {
+                                vec![video_id_for_tags.clone()]
+                            } else {
+                                self.selected_videos.iter().cloned().collect()
+                            };
+                            
+                            let is_multi = target_videos.len() > 1;
+                            let title = if is_multi {
+                                format!("{} ({} videos)", self.i18n.t("add_tag"), target_videos.len())
+                            } else {
+                                self.i18n.t("add_tag")
+                            };
+                            
+                            egui::Window::new(&title)
                                 .collapsible(false)
                                 .resizable(false)
                                 .default_pos(popup_pos)
@@ -973,10 +1242,20 @@ impl eframe::App for VideoPlayerApp {
                                         .show(ui, |ui| {
                                             let all_tags = self.database.tags.clone();
                                             for tag in &all_tags {
-                                                // Don't show tags already assigned to this video
-                                                if !video_tags.contains(tag) {
+                                                // For multi-selection, show all tags
+                                                // For single selection, don't show tags already assigned
+                                                let should_show = if is_multi {
+                                                    true
+                                                } else {
+                                                    !video_tags.contains(tag)
+                                                };
+                                                
+                                                if should_show {
                                                     if ui.button(format!("#{}", tag)).clicked() {
-                                                        self.add_tag_to_video(&video_id_for_tags, tag.clone());
+                                                        // Add tag to all target videos
+                                                        for vid in &target_videos {
+                                                            self.add_tag_to_video(vid, tag.clone());
+                                                        }
                                                         self.show_tag_add_popup = false;
                                                     }
                                                 }
@@ -992,7 +1271,10 @@ impl eframe::App for VideoPlayerApp {
                                         if ui.button(&self.i18n.t("create_tag")).clicked() && !self.new_tag_input.is_empty() {
                                             let new_tag = self.new_tag_input.trim().to_string();
                                             if !new_tag.is_empty() {
-                                                self.add_tag_to_video(&video_id_for_tags, new_tag);
+                                                // Add tag to all target videos
+                                                for vid in &target_videos {
+                                                    self.add_tag_to_video(vid, new_tag.clone());
+                                                }
                                                 self.new_tag_input.clear();
                                                 self.show_tag_add_popup = false;
                                             }
@@ -1148,16 +1430,16 @@ impl eframe::App for VideoPlayerApp {
                 ui.separator();
                 ui.label("Sort:");
                 
-                // 追加日時ボタン
+                // 作成日時ボタン
                 let added_date_text = match self.sort_field {
                     SortField::AddedDate => {
                         if self.sort_order == SortOrder::Ascending {
-                            "追加日時 ↑"
+                            "作成日時 ↑"
                         } else {
-                            "追加日時 ↓"
+                            "作成日時 ↓"
                         }
                     }
-                    _ => "追加日時"
+                    _ => "作成日時"
                 };
                 if ui.button(added_date_text).clicked() {
                     if self.sort_field == SortField::AddedDate {
@@ -1316,34 +1598,22 @@ impl eframe::App for VideoPlayerApp {
                         settings_changed = true;
                     }
                     
-                    // Show shader selection if custom shaders are enabled
+                    // Button to open shader management window
                     if self.use_custom_shaders {
-                        ui.indent("shader_selection", |ui| {
-                            ui.label("Select shader to use:");
-                            
-                            let available_shaders = video_player::get_available_shaders();
-                            
-                            if available_shaders.is_empty() {
-                                ui.label("⚠ No shaders found in mpv/glsl_shaders directory");
-                            } else {
-                                // Add "None" option
-                                if ui.radio(self.selected_shader.is_none(), "None").clicked() {
-                                    self.selected_shader = None;
-                                    settings_changed = true;
-                                }
-                                
-                                // Add radio button for each shader
-                                for shader_name in &available_shaders {
-                                    let is_selected = self.selected_shader.as_ref() == Some(shader_name);
-                                    if ui.radio(is_selected, shader_name).clicked() {
-                                        self.selected_shader = Some(shader_name.clone());
-                                        settings_changed = true;
-                                    }
-                                }
-                            }
-                        });
+                        if ui.button(&self.i18n.t("manage_shaders")).clicked() {
+                            self.show_shader_management_window = true;
+                        }
                     } else {
                         ui.label("📁 Place .glsl shader files in the mpv/glsl_shaders directory");
+                    }
+                    
+                    ui.separator();
+                    ui.heading(&self.i18n.t("management"));
+                    ui.separator();
+                    
+                    // Button to open folder management window
+                    if ui.button(&self.i18n.t("manage_folders")).clicked() {
+                        self.show_folder_management_window = true;
                     }
                     
                     ui.separator();
@@ -1366,6 +1636,132 @@ impl eframe::App for VideoPlayerApp {
         // Save settings when changed or when options window is closed
         if settings_changed || (options_window_was_open && !self.show_options_window) {
             self.save_settings();
+        }
+        
+        // Folder Management Window
+        if self.show_folder_management_window {
+            let folder_management_title = self.i18n.t("folder_management");
+            let registered_folders_text = self.i18n.t("registered_folders");
+            let new_folder_name_text = self.i18n.t("new_folder_name");
+            let add_folder_name_text = self.i18n.t("add_folder_name");
+            
+            let mut window_open = self.show_folder_management_window;
+            
+            egui::Window::new(&folder_management_title)
+                .open(&mut window_open)
+                .resizable(true)
+                .default_width(500.0)
+                .show(ctx, |ui| {
+                    ui.label(&registered_folders_text);
+                    ui.separator();
+                    
+                    let mut folder_to_remove: Option<String> = None;
+                    let mut folders_changed = false;
+                    
+                    // Display folders with delete buttons
+                    egui::ScrollArea::vertical()
+                        .max_height(300.0)
+                        .show(ui, |ui| {
+                            let folders = self.database.folders.clone();
+                            for folder in folders {
+                                ui.horizontal(|ui| {
+                                    ui.label(&folder);
+                                    if ui.button("❌").clicked() {
+                                        folder_to_remove = Some(folder.clone());
+                                    }
+                                });
+                            }
+                        });
+                    
+                    // Remove folder if requested
+                    if let Some(folder) = folder_to_remove {
+                        self.database.folders.retain(|f| f != &folder);
+                        
+                        // Also remove from watched_folders (match by folder name)
+                        self.watched_folders.retain(|path| {
+                            path.file_name()
+                                .and_then(|n| n.to_str())
+                                .map(|name| name != folder)
+                                .unwrap_or(true)
+                        });
+                        
+                        eprintln!("[folder_management] Removed folder '{}' from watched list", folder);
+                        folders_changed = true;
+                    }
+                    
+                    ui.separator();
+                    
+                    // Add new folder
+                    ui.label(&new_folder_name_text);
+                    ui.horizontal(|ui| {
+                        ui.text_edit_singleline(&mut self.new_folder_input);
+                        if ui.button(&add_folder_name_text).clicked() && !self.new_folder_input.trim().is_empty() {
+                            let new_folder = self.new_folder_input.trim().to_string();
+                            self.database.add_folder(new_folder);
+                            self.new_folder_input.clear();
+                            folders_changed = true;
+                        }
+                    });
+                    
+                    if folders_changed {
+                        self.save_settings();
+                        let _ = database::save_database(&self.database);
+                    }
+                });
+            
+            self.show_folder_management_window = window_open;
+        }
+        
+        // Shader Management Window
+        if self.show_shader_management_window {
+            let shader_management_title = self.i18n.t("shader_management");
+            let select_shader_text = self.i18n.t("select_shader_to_use");
+            
+            let mut window_open = self.show_shader_management_window;
+            
+            egui::Window::new(&shader_management_title)
+                .open(&mut window_open)
+                .resizable(true)
+                .default_width(400.0)
+                .show(ctx, |ui| {
+                    ui.label(&select_shader_text);
+                    ui.separator();
+                    
+                    let mut shader_changed = false;
+                    let available_shaders = video_player::get_available_shaders();
+                    
+                    if available_shaders.is_empty() {
+                        ui.label("⚠ No shaders found in mpv/glsl_shaders directory");
+                        ui.label("📁 Place .glsl shader files in the mpv/glsl_shaders directory");
+                    } else {
+                        // Add "None" option
+                        if ui.radio(self.selected_shader.is_none(), "None").clicked() {
+                            self.selected_shader = None;
+                            shader_changed = true;
+                        }
+                        
+                        ui.separator();
+                        
+                        // Add radio button for each shader
+                        egui::ScrollArea::vertical()
+                            .max_height(400.0)
+                            .show(ui, |ui| {
+                                for shader_name in &available_shaders {
+                                    let is_selected = self.selected_shader.as_ref() == Some(shader_name);
+                                    if ui.radio(is_selected, shader_name).clicked() {
+                                        self.selected_shader = Some(shader_name.clone());
+                                        shader_changed = true;
+                                    }
+                                }
+                            });
+                    }
+                    
+                    if shader_changed {
+                        self.save_settings();
+                    }
+                });
+            
+            self.show_shader_management_window = window_open;
         }
         
         // Delete confirmation dialog
@@ -1421,6 +1817,77 @@ impl eframe::App for VideoPlayerApp {
                     });
                 });
         }
+        
+        // MPV shortcuts panel at bottom left
+        if self.show_mpv_shortcuts {
+            let mut window_open = self.mpv_shortcuts_open;
+            let window_was_open = window_open;
+            
+            egui::Window::new("MPV Shortcuts")
+                .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(10.0, -10.0))
+                .resizable(false)
+                .collapsible(true)
+                .open(&mut window_open)
+                .show(ctx, |ui| {
+                    ui.set_width(250.0);
+                    
+                    ui.label(egui::RichText::new("⌨ Keyboard Shortcuts").strong());
+                    ui.separator();
+                    
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Space").code().strong());
+                        ui.label("Play/Pause");
+                    });
+                    
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("F").code().strong());
+                        ui.label("Toggle Fullscreen");
+                    });
+                    
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("←/→").code().strong());
+                        ui.label("Seek -5/+5 sec");
+                    });
+                    
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("↑/↓").code().strong());
+                        ui.label("Seek -60/+60 sec");
+                    });
+                    
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("9/0").code().strong());
+                        ui.label("Volume Down/Up");
+                    });
+                    
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("M").code().strong());
+                        ui.label("Mute/Unmute");
+                    });
+                    
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("[/]").code().strong());
+                        ui.label("Speed -10%/+10%");
+                    });
+                    
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("{/}").code().strong());
+                        ui.label("Speed x0.5/x2.0");
+                    });
+                    
+                    ui.horizontal(|ui| {
+                        ui.label(egui::RichText::new("Q").code().strong());
+                        ui.label("Quit Player");
+                    });
+                });
+            
+            // Save state if changed
+            if window_open != window_was_open {
+                self.mpv_shortcuts_open = window_open;
+                self.save_settings();
+            } else {
+                self.mpv_shortcuts_open = window_open;
+            }
+        }
     }
 }
 
@@ -1438,7 +1905,8 @@ impl VideoPlayerApp {
                     ui.vertical(|ui| {
                         ui.set_width(item_width);
                         
-                        let is_selected = self.selected_videos.contains(&video.id);
+                        let is_selected = self.selected_videos.contains(&video.id) || 
+                                         self.selected_video.as_ref() == Some(&video.id);
                         
                         // Thumbnail with selection highlight
                         let base_thumbnail_size = egui::vec2(180.0, 135.0);
@@ -1515,7 +1983,8 @@ impl VideoPlayerApp {
                                     self.toggle_video_selection(&video.id);
                                     self.last_selected_video = Some(video.id.clone());
                                 } else {
-                                    // Single click: select video
+                                    // Single click: clear multi-select and select only this video
+                                    self.selected_videos.clear();
                                     self.selected_video = Some(video.id.clone());
                                     self.scene_panel_visible = true;
                                     self.last_selected_video = Some(video.id.clone());
@@ -1608,7 +2077,8 @@ impl VideoPlayerApp {
     fn show_list_view(&mut self, ui: &mut egui::Ui, videos: &[VideoFile]) {
         for video in videos {
             ui.horizontal(|ui| {
-                let is_selected = self.selected_videos.contains(&video.id);
+                let is_selected = self.selected_videos.contains(&video.id) || 
+                                 self.selected_video.as_ref() == Some(&video.id);
                 
                 // Title with selection highlight
                 let title_response = ui.selectable_label(is_selected, &video.title);
@@ -1627,7 +2097,8 @@ impl VideoPlayerApp {
                         self.toggle_video_selection(&video.id);
                         self.last_selected_video = Some(video.id.clone());
                     } else {
-                        // Single click: select video
+                        // Single click: clear multi-select and select only this video
+                        self.selected_videos.clear();
                         self.selected_video = Some(video.id.clone());
                         self.scene_panel_visible = true;
                         self.last_selected_video = Some(video.id.clone());
