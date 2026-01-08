@@ -1,0 +1,27 @@
+================================================================================
+Third-Party Software Licenses
+================================================================================
+
+This application includes the following third-party software:
+
+================================================================================
+mpv - a free, open source, and cross-platform media player
+================================================================================
+
+Website: https://mpv.io/
+Source Code: https://github.com/mpv-player/mpv
+License: LGPL v2.1 or later
+
+mpv is distributed under the terms of the GNU Lesser General Public License 
+version 2.1 or later (LGPLv2.1+).
+
+The complete source code of mpv is available at:
+https://github.com/mpv-player/mpv
+
+We distribute the unmodified mpv.exe binary from the official Windows builds
+available at: https://sourceforge.net/projects/mpv-player-windows/
+
+A copy of the LGPL v2.1 license can be found at:
+https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+
+================================================================================

@@ -1,0 +1,35 @@
+[package]
+name = "cicadagallaley"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+# GUI framework
+eframe = "0.29"
+egui = "0.29"
+egui_extras = { version = "0.29", features = ["image"] }
+
+# Image processing for thumbnails
+image = "0.25"
+
+# File system operations
+walkdir = "2.5"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Date/time
+chrono = { version = "0.4", features = ["serde"] }
+
+# System dialogs
+rfd = "0.15"
+
+# UUID generation
+uuid = { version = "1.0", features = ["v4", "serde"] }
+
+# Directories
+dirs = "5.0"
+
+[target.'cfg(windows)'.dependencies]
+winapi = { version = "0.3", features = ["shellapi", "winuser"] }
