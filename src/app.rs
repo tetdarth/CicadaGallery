@@ -35,6 +35,7 @@ pub struct VideoPlayerApp {
     pub selected_videos: HashSet<String>, // IDs of selected videos for multi-selection
     pub last_selected_video: Option<String>, // Last selected video ID for shift-click range selection
     pub mpv_always_on_top: bool, // Keep mpv window always on top
+    pub mpv_volume: u8, // MPV volume (0-100)
     pub selected_scenes: HashSet<usize>, // Indices of selected scenes
     pub last_selected_scene: Option<usize>, // Last selected scene index for shift-click range selection
     pub show_tag_add_popup: bool, // Show tag addition popup
@@ -127,6 +128,7 @@ impl Default for VideoPlayerApp {
             selected_videos: HashSet::new(),
             last_selected_video: None,
             mpv_always_on_top: settings.mpv_always_on_top,
+            mpv_volume: settings.mpv_volume,
             selected_scenes: HashSet::new(),
             last_selected_scene: None,
             show_tag_add_popup: false,
@@ -215,6 +217,7 @@ impl VideoPlayerApp {
             added_dates_updated: true, // Keep as true to avoid re-updating
             watched_folders: self.watched_folders.iter().cloned().collect(),
             mpv_shortcuts_open: self.mpv_shortcuts_open,
+            mpv_volume: self.mpv_volume,
         };
         
         if let Err(e) = database::save_settings(&settings) {
@@ -737,7 +740,7 @@ impl VideoPlayerApp {
         // Double click: play video
         if response.double_clicked() {
             let selected_shader = self.selected_shader.as_deref();
-            if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation) {
+            if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation, self.mpv_volume) {
                 eprintln!("Video playback error: {}", e);
             }
         }
@@ -962,6 +965,19 @@ impl eframe::App for VideoPlayerApp {
                         }
                     }
                 }
+                
+                // Push volume slider to the right
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    ui.add(egui::Slider::new(&mut self.mpv_volume, 0..=100)
+                        .text("🔊")
+                        .suffix("%")
+                        .show_value(true)
+                        .min_decimals(0)
+                        .max_decimals(0));
+                    if ui.memory(|mem| mem.is_anything_being_dragged()) {
+                        self.save_settings();
+                    }
+                });
             });
         });
         
@@ -1372,7 +1388,7 @@ impl eframe::App for VideoPlayerApp {
                                                     self.selected_scenes.clear();
                                                     self.last_selected_scene = None;
                                                     let selected_shader = self.selected_shader.as_deref();
-                                                    if let Err(e) = video_player::play_video_at_timestamp(&video_path, scene.timestamp, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation) {
+                                                    if let Err(e) = video_player::play_video_at_timestamp(&video_path, scene.timestamp, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation, self.mpv_volume) {
                                                         eprintln!("Video playback error: {}", e);
                                                     }
                                                 }
@@ -1383,7 +1399,7 @@ impl eframe::App for VideoPlayerApp {
                                             response.context_menu(|ui| {
                                                 if ui.button(&self.i18n.t("play_from_scene")).clicked() {
                                                     let selected_shader = self.selected_shader.as_deref();
-                                                    if let Err(e) = video_player::play_video_at_timestamp(&video_path, scene_ts, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation) {
+                                                    if let Err(e) = video_player::play_video_at_timestamp(&video_path, scene_ts, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation, self.mpv_volume) {
                                                         eprintln!("Video playback error: {}", e);
                                                     }
                                                     ui.close_menu();
@@ -2000,7 +2016,7 @@ impl VideoPlayerApp {
                             // Double click: play video
                             if response.double_clicked() {
                                 let selected_shader = self.selected_shader.as_deref();
-                                if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation) {
+                                if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation, self.mpv_volume) {
                                     eprintln!("Video playback error: {}", e);
                                 }
                             }
@@ -2008,7 +2024,7 @@ impl VideoPlayerApp {
                             response.context_menu(|ui| {
                                 if ui.button(&self.i18n.t("play_video")).clicked() {
                                     let selected_shader = self.selected_shader.as_deref();
-                                    if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation) {
+                                    if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation, self.mpv_volume) {
                                         eprintln!("Video playback error: {}", e);
                                     }
                                     ui.close_menu();
@@ -2114,7 +2130,7 @@ impl VideoPlayerApp {
                 // Double click: play video
                 if title_response.double_clicked() {
                     let selected_shader = self.selected_shader.as_deref();
-                    if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation) {
+                    if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation, self.mpv_volume) {
                         eprintln!("Video playback error: {}", e);
                     }
                 }

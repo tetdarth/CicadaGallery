@@ -279,10 +279,16 @@ pub struct AppSettings {
     pub watched_folders: Vec<std::path::PathBuf>, // Folders being watched for changes
     #[serde(default = "default_mpv_shortcuts_open")]
     pub mpv_shortcuts_open: bool, // MPV shortcuts panel open/collapsed state
+    #[serde(default = "default_mpv_volume")]
+    pub mpv_volume: u8, // MPV volume (0-100)
 }
 
 fn default_mpv_shortcuts_open() -> bool {
     true
+}
+
+fn default_mpv_volume() -> u8 {
+    100
 }
 
 impl Default for AppSettings {
@@ -299,6 +305,7 @@ impl Default for AppSettings {
             use_frame_interpolation: false,
             language: Language::default(),
             added_dates_updated: false,
-            watched_folders: Vec::new(),            mpv_shortcuts_open: true,        }
+            watched_folders: Vec::new(),            mpv_shortcuts_open: true,            mpv_volume: 100,
+        }
     }
 }

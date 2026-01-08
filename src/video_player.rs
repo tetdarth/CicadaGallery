@@ -153,7 +153,7 @@ fn try_play_video(command: &str, args: &[&str]) -> bool {
 
 /// Play video with timestamp using available video players
 /// Tries mpv.net, mpv, VLC, then falls back to system default player
-pub fn play_video_at_timestamp(video_path: &Path, timestamp_seconds: f64, always_on_top: bool, use_gpu_hq: bool, use_custom_shaders: bool, selected_shader: Option<&str>, use_frame_interpolation: bool) -> Result<(), Box<dyn std::error::Error>> {
+pub fn play_video_at_timestamp(video_path: &Path, timestamp_seconds: f64, always_on_top: bool, use_gpu_hq: bool, use_custom_shaders: bool, selected_shader: Option<&str>, use_frame_interpolation: bool, volume: u8) -> Result<(), Box<dyn std::error::Error>> {
     let video_path_str = video_path.to_str().unwrap();
     
     // 既存のmpvインスタンスにコマンドを送信
@@ -163,6 +163,7 @@ pub fn play_video_at_timestamp(video_path: &Path, timestamp_seconds: f64, always
     
     // 既存のインスタンスがない場合は新規起動
     let start_arg = format!("--start={}", timestamp_seconds);
+    let volume_arg = format!("--volume={}", volume);
     let ipc_arg = format!("--input-ipc-server={}", IPC_PIPE_NAME);
     let ontop_arg = "--ontop";
     let log_arg = "--log-file=mpv.log";
@@ -212,7 +213,7 @@ pub fn play_video_at_timestamp(video_path: &Path, timestamp_seconds: f64, always
             
             if path.exists() {
                 // Build arguments based on options
-                let mut args: Vec<String> = vec![ipc_arg.clone(), start_arg.clone(), log_arg.to_string()];
+                let mut args: Vec<String> = vec![ipc_arg.clone(), start_arg.clone(), volume_arg.clone(), log_arg.to_string()];
                 
                 // Enable GPU rendering if using gpu-hq or custom shaders
                 if use_gpu_hq || (use_custom_shaders && !shader_args.is_empty()) {
