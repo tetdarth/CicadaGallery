@@ -1,4 +1,4 @@
-# CicadaGallaley - 動画ギャラリープレイヤー
+# CicadaGallery - 動画ギャラリープレイヤー
 
 Rust製の動画管理・再生アプリケーションです。
 
@@ -47,7 +47,7 @@ cd mpv/installer
 ## 実行方法
 
 ```bash
-cd cicadaGallaley
+cd CicadaGallery
 cargo run
 ```
 
@@ -57,7 +57,7 @@ cargo run
 cargo build --release
 ```
 
-実行可能ファイルは `target/release/cicadagallaley.exe` に生成されます。
+実行可能ファイルは `target/release/cicada_gallery.exe` に生成されます。
 
 ## 使い方
 
@@ -78,8 +78,8 @@ cargo build --release
 ## データ保存場所
 
 動画データベースと設定は以下に保存されます：
-- Windows: `%LOCALAPPDATA%\cicadaGallaley\database.json`
-- 設定ファイル: `%LOCALAPPDATA%\cicadaGallaley\settings.json`
+- Windows: `%LOCALAPPDATA%\CicadaGallery\database.json`
+- 設定ファイル: `%LOCALAPPDATA%\CicadaGallery\settings.json`
 
 ## 言語設定
 

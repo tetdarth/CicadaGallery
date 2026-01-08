@@ -4,7 +4,7 @@ use std::process::Command;
 /// サムネイルのキャッシュディレクトリを取得
 pub fn get_cache_dir() -> PathBuf {
     let mut cache_dir = dirs::cache_dir().unwrap_or_else(|| PathBuf::from("."));
-    cache_dir.push("cicadaGallaley");
+    cache_dir.push("CicadaGallery");
     cache_dir.push("thumbnails");
     cache_dir
 }

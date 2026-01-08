@@ -281,6 +281,8 @@ pub struct AppSettings {
     pub mpv_shortcuts_open: bool, // MPV shortcuts panel open/collapsed state
     #[serde(default = "default_mpv_volume")]
     pub mpv_volume: u8, // MPV volume (0-100)
+    #[serde(default)]
+    pub license_key: Option<String>, // Signed license key
 }
 
 fn default_mpv_shortcuts_open() -> bool {
@@ -305,7 +307,10 @@ impl Default for AppSettings {
             use_frame_interpolation: false,
             language: Language::default(),
             added_dates_updated: false,
-            watched_folders: Vec::new(),            mpv_shortcuts_open: true,            mpv_volume: 100,
+            watched_folders: Vec::new(),
+            mpv_shortcuts_open: true,
+            mpv_volume: 100,
+            license_key: None,
         }
     }
 }

@@ -5,6 +5,7 @@ use crate::database;
 use crate::scene_detection::{self, get_video_duration, get_video_resolution};
 use crate::thumbnail;
 use crate::i18n::{I18n, Language};
+use crate::license;
 use eframe::egui;
 use rfd::FileDialog;
 use std::collections::{HashMap, HashSet};
@@ -57,6 +58,13 @@ pub struct VideoPlayerApp {
     pub fs_events: Option<Arc<Mutex<Receiver<Result<Event, notify::Error>>>>>, // Channel for file system events
     pub pending_rescan: bool, // Flag to trigger rescan on next update
     pub last_rescan_time: SystemTime, // Last time a rescan was performed
+    pub is_premium: bool, // Premium/free tier (false = free, true = premium)
+    pub show_premium_promotion_window: bool, // Show premium promotion window when limit reached
+    pub show_license_window: bool, // Show license activation window
+    pub license_input: String, // License key input field
+    pub license_status_message: Option<String>, // License activation status message
+    pub current_license: Option<license::License>, // Currently activated license
+    pub folder_delete_confirm: Option<(String, usize)>, // (folder_name, video_count) pending deletion
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -107,6 +115,33 @@ impl Default for VideoPlayerApp {
         // Initialize i18n with loaded language
         let i18n = I18n::new(settings.language);
         
+        // Verify license if exists (only source of premium status)
+        let (is_premium, current_license) = if let Some(ref license_key) = settings.license_key {
+            match license::verify_license(license_key) {
+                Ok(license) if license.is_premium_active() => {
+                    eprintln!("[License] Valid premium license loaded for {}", license.info.issued_to);
+                    (true, Some(license))
+                },
+                Ok(license) if license.is_expired => {
+                    eprintln!("[License] License expired on {}", 
+                        license.info.expires_at.map(|ts| license::format_timestamp(ts))
+                            .unwrap_or_else(|| "Unknown".to_string()));
+                    (false, Some(license))
+                },
+                Ok(license) => {
+                    eprintln!("[License] Invalid license type: {}", license.info.license_type);
+                    (false, Some(license))
+                },
+                Err(e) => {
+                    eprintln!("[License] Failed to verify license: {}", e);
+                    (false, None)
+                }
+            }
+        } else {
+            eprintln!("[License] No license key found - running in free mode");
+            (false, None)
+        };
+        
         Self {
             database,
             selected_video: None,
@@ -150,6 +185,13 @@ impl Default for VideoPlayerApp {
             fs_events: None,
             pending_rescan: false,
             last_rescan_time: SystemTime::now(),
+            is_premium,
+            show_premium_promotion_window: false,
+            show_license_window: false,
+            license_input: String::new(),
+            license_status_message: None,
+            current_license,
+            folder_delete_confirm: None,
         }
     }
 }
@@ -203,6 +245,14 @@ impl VideoPlayerApp {
     
     /// Save current settings to file
     pub fn save_settings(&self) {
+        // Extract license key from current license or settings
+        let license_key = self.current_license.as_ref()
+            .and_then(|_| {
+                // Get from loaded settings
+                database::load_settings().ok()
+                    .and_then(|s| s.license_key)
+            });
+        
         let settings = crate::models::AppSettings {
             thumbnail_scale: self.thumbnail_scale,
             mpv_always_on_top: self.mpv_always_on_top,
@@ -218,6 +268,7 @@ impl VideoPlayerApp {
             watched_folders: self.watched_folders.iter().cloned().collect(),
             mpv_shortcuts_open: self.mpv_shortcuts_open,
             mpv_volume: self.mpv_volume,
+            license_key,
         };
         
         if let Err(e) = database::save_settings(&settings) {
@@ -227,12 +278,26 @@ impl VideoPlayerApp {
     
     // Execute methods for heavy operations
     pub fn add_files(&mut self) {
+        // Check video limit for free tier
+        if !self.is_premium && self.database.videos.len() >= 100 {
+            eprintln!("[Free tier] Video limit reached (100 videos max). Upgrade to premium for unlimited videos.");
+            self.show_premium_promotion_window = true;
+            return;
+        }
+        
         if let Some(files) = FileDialog::new()
             .add_filter("Video Files", &["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg"])
             .pick_files()
         {
             let cache_dir = thumbnail::get_cache_dir();
             for file in files {
+                // Check limit for each file
+                if !self.is_premium && self.database.videos.len() >= 100 {
+                    eprintln!("[Free tier] Video limit reached. Skipping remaining files.");
+                    self.show_premium_promotion_window = true;
+                    break;
+                }
+                
                 let mut video = VideoFile::new(file.clone());
                 
                 // Generate thumbnail
@@ -250,6 +315,13 @@ impl VideoPlayerApp {
     }
     
     pub fn add_folder(&mut self) {
+        // Check video limit for free tier
+        if !self.is_premium && self.database.videos.len() >= 100 {
+            eprintln!("[Free tier] Video limit reached (100 videos max). Upgrade to premium for unlimited videos.");
+            self.show_premium_promotion_window = true;
+            return;
+        }
+        
         if let Some(folder) = FileDialog::new().pick_folder() {
             let cache_dir = thumbnail::get_cache_dir();
             let mut videos = video_scanner::scan_directory(folder.clone());
@@ -287,6 +359,13 @@ impl VideoPlayerApp {
                 if existing_paths.contains(&canonical_path) {
                     eprintln!("[add_folder] Skipping existing video: {:?}", video.path);
                     continue;
+                }
+                
+                // Check limit for free tier
+                if !self.is_premium && self.database.videos.len() >= 100 {
+                    eprintln!("[Free tier] Video limit reached. Skipping remaining videos in folder.");
+                    self.show_premium_promotion_window = true;
+                    break;
                 }
                 
                 eprintln!("[add_folder] Adding new video: {:?}", video.path);
@@ -423,8 +502,54 @@ impl VideoPlayerApp {
     
     pub fn set_rating(&mut self, video_id: &str, rating: u8) {
         if let Some(video) = self.database.get_video_mut(video_id) {
-            video.rating = rating.min(5); // Cap at 5 stars
+            // Free tier: only favorite (1) or no favorite (0)
+            // Premium: 1-5 star ratings
+            if !self.is_premium && rating > 1 {
+                video.rating = 1; // Cap at favorite for free tier
+            } else {
+                video.rating = rating.min(5); // Cap at 5 stars
+            }
             let _ = database::save_database(&self.database);
+        }
+    }
+    
+    /// Activate a license key
+    pub fn activate_license(&mut self, license_key: &str) {
+        match license::verify_license(license_key) {
+            Ok(license) if license.is_premium_active() => {
+                self.current_license = Some(license.clone());
+                self.is_premium = true;
+                self.license_status_message = Some(format!(
+                    "✅ License activated successfully!\nIssued to: {}\nExpires: {}",
+                    license.info.issued_to,
+                    license.info.expires_at.map(|ts| license::format_timestamp(ts))
+                        .unwrap_or_else(|| "Never".to_string())
+                ));
+                
+                // Save license key to settings (premium status derived from license)
+                if let Ok(mut settings) = database::load_settings() {
+                    settings.license_key = Some(license_key.to_string());
+                    let _ = database::save_settings(&settings);
+                }
+                
+                eprintln!("[License] Premium license activated for {}", license.info.issued_to);
+            },
+            Ok(license) if license.is_expired => {
+                self.license_status_message = Some(format!(
+                    "❌ License expired\nExpired on: {}",
+                    license.info.expires_at.map(|ts| license::format_timestamp(ts))
+                        .unwrap_or_else(|| "Unknown".to_string())
+                ));
+            },
+            Ok(license) => {
+                self.license_status_message = Some(format!(
+                    "❌ Invalid license type: {}",
+                    license.info.license_type
+                ));
+            },
+            Err(e) => {
+                self.license_status_message = Some(format!("❌ License verification failed:\n{}", e));
+            }
         }
     }
     
@@ -740,7 +865,10 @@ impl VideoPlayerApp {
         // Double click: play video
         if response.double_clicked() {
             let selected_shader = self.selected_shader.as_deref();
-            if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation, self.mpv_volume) {
+            let use_gpu_hq = self.is_premium && self.use_gpu_hq;
+            let use_custom_shaders = self.is_premium && self.use_custom_shaders;
+            let use_frame_interpolation = self.is_premium && self.use_frame_interpolation;
+            if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, use_frame_interpolation, self.mpv_volume) {
                 eprintln!("Video playback error: {}", e);
             }
         }
@@ -936,8 +1064,13 @@ impl eframe::App for VideoPlayerApp {
                 
                 ui.separator();
                 
-                if ui.button(if self.scene_panel_visible { "Hide Scenes" } else { "Show Scenes" }).clicked() {
-                    self.scene_panel_visible = !self.scene_panel_visible;
+                // Scene panel button (premium only)
+                if self.is_premium {
+                    if ui.button(if self.scene_panel_visible { "Hide Scenes" } else { "Show Scenes" }).clicked() {
+                        self.scene_panel_visible = !self.scene_panel_visible;
+                    }
+                } else {
+                    ui.add_enabled(false, egui::Button::new("Show Scenes 🔒"));
                 }
                 
                 ui.separator();
@@ -974,6 +1107,26 @@ impl eframe::App for VideoPlayerApp {
                         .show_value(true)
                         .min_decimals(0)
                         .max_decimals(0));
+                    // ui.label("デフォルト音量");
+                    
+                    ui.separator();
+                    
+                    // Show video count and limit for free tier
+                    let video_count = self.database.videos.len();
+                    if self.is_premium {
+                        ui.label(format!("📹 Videos: {}", video_count));
+                    } else {
+                        let count_text = format!("📹 {}/100 (Free)", video_count);
+                        let color = if video_count >= 100 {
+                            egui::Color32::from_rgb(255, 100, 100)
+                        } else if video_count >= 80 {
+                            egui::Color32::from_rgb(255, 200, 100)
+                        } else {
+                            egui::Color32::from_rgb(200, 200, 200)
+                        };
+                        ui.label(egui::RichText::new(count_text).color(color));
+                    }
+                    
                     if ui.memory(|mem| mem.is_anything_being_dragged()) {
                         self.save_settings();
                     }
@@ -992,10 +1145,19 @@ impl eframe::App for VideoPlayerApp {
                 if ui.radio(self.min_rating_filter == 0, "All").clicked() {
                     self.min_rating_filter = 0;
                 }
-                for rating in 1..=5 {
-                    let label = format!("{}★+", rating);
-                    if ui.radio(self.min_rating_filter == rating, label).clicked() {
-                        self.min_rating_filter = rating;
+                
+                if self.is_premium {
+                    // Premium: 1-5 star ratings
+                    for rating in 1..=5 {
+                        let label = format!("{}★+", rating);
+                        if ui.radio(self.min_rating_filter == rating, label).clicked() {
+                            self.min_rating_filter = rating;
+                        }
+                    }
+                } else {
+                    // Free: Favorite only
+                    if ui.radio(self.min_rating_filter == 1, "⭐ Favorites").clicked() {
+                        self.min_rating_filter = 1;
                     }
                 }
             });
@@ -1309,25 +1471,26 @@ impl eframe::App for VideoPlayerApp {
                         ui.add_space(10.0);
                         ui.separator();
                         
-                        // Scene thumbnails section
-                        ui.heading(&self.i18n.t("scene_thumbnails"));
-                        
-                        // Show selection controls if scenes are selected
-                        if !self.selected_scenes.is_empty() {
-                            ui.horizontal(|ui| {
-                                let selected_text = self.i18n.t("selected_count").replace("{}", &self.selected_scenes.len().to_string());
-                                ui.label(&selected_text);
-                                if ui.button(&self.i18n.t("clear_selection")).clicked() {
-                                    self.selected_scenes.clear();
-                                    self.last_selected_scene = None;
-                                }
-                                if ui.button(&self.i18n.t("delete_selected")).clicked() {
-                                    self.delete_selected_scenes(video_id);
-                                }
-                            });
-                        }
-                        
-                        ui.separator();
+                        // Scene thumbnails section (premium only)
+                        if self.is_premium {
+                            ui.heading(&self.i18n.t("scene_thumbnails"));
+                            
+                            // Show selection controls if scenes are selected
+                            if !self.selected_scenes.is_empty() {
+                                ui.horizontal(|ui| {
+                                    let selected_text = self.i18n.t("selected_count").replace("{}", &self.selected_scenes.len().to_string());
+                                    ui.label(&selected_text);
+                                    if ui.button(&self.i18n.t("clear_selection")).clicked() {
+                                        self.selected_scenes.clear();
+                                        self.last_selected_scene = None;
+                                    }
+                                    if ui.button(&self.i18n.t("delete_selected")).clicked() {
+                                        self.delete_selected_scenes(video_id);
+                                    }
+                                });
+                            }
+                            
+                            ui.separator();
                         // Show generate button if no scenes exist
                         if video.scenes.is_empty() {
                             ui.label(&self.i18n.t("no_scenes_yet"));
@@ -1388,7 +1551,10 @@ impl eframe::App for VideoPlayerApp {
                                                     self.selected_scenes.clear();
                                                     self.last_selected_scene = None;
                                                     let selected_shader = self.selected_shader.as_deref();
-                                                    if let Err(e) = video_player::play_video_at_timestamp(&video_path, scene.timestamp, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation, self.mpv_volume) {
+                                                    let use_gpu_hq = self.is_premium && self.use_gpu_hq;
+                                                    let use_custom_shaders = self.is_premium && self.use_custom_shaders;
+                                                    let use_frame_interpolation = self.is_premium && self.use_frame_interpolation;
+                                                    if let Err(e) = video_player::play_video_at_timestamp(&video_path, scene.timestamp, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, use_frame_interpolation, self.mpv_volume) {
                                                         eprintln!("Video playback error: {}", e);
                                                     }
                                                 }
@@ -1399,7 +1565,10 @@ impl eframe::App for VideoPlayerApp {
                                             response.context_menu(|ui| {
                                                 if ui.button(&self.i18n.t("play_from_scene")).clicked() {
                                                     let selected_shader = self.selected_shader.as_deref();
-                                                    if let Err(e) = video_player::play_video_at_timestamp(&video_path, scene_ts, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation, self.mpv_volume) {
+                                                    let use_gpu_hq = self.is_premium && self.use_gpu_hq;
+                                                    let use_custom_shaders = self.is_premium && self.use_custom_shaders;
+                                                    let use_frame_interpolation = self.is_premium && self.use_frame_interpolation;
+                                                    if let Err(e) = video_player::play_video_at_timestamp(&video_path, scene_ts, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, use_frame_interpolation, self.mpv_volume) {
                                                         eprintln!("Video playback error: {}", e);
                                                     }
                                                     ui.close_menu();
@@ -1423,6 +1592,23 @@ impl eframe::App for VideoPlayerApp {
                                     }
                                 });
                         }
+                        } else {
+                            // Free tier: Show locked message for scene thumbnails
+                            ui.vertical_centered(|ui| {
+                                ui.add_space(50.0);
+                                ui.heading(&self.i18n.t("scene_thumbnails_locked"));
+                                ui.add_space(10.0);
+                                ui.label(&self.i18n.t("premium_feature_available"));
+                                ui.add_space(5.0);
+                                ui.label(&self.i18n.t("premium_features"));
+                                ui.label(&self.i18n.t("premium_scene_generation"));
+                                ui.label(&self.i18n.t("premium_star_ratings"));
+                                ui.label(&self.i18n.t("premium_glsl_shaders"));
+                                ui.label(&self.i18n.t("premium_frame_interpolation"));
+                                ui.label(&self.i18n.t("premium_gpu_rendering"));
+                                ui.label(&self.i18n.t("premium_unlimited_storage"));
+                            });
+                        }
                     }
                 } else {
                     // No video selected
@@ -1444,18 +1630,18 @@ impl eframe::App for VideoPlayerApp {
                 ui.text_edit_singleline(&mut self.search_query);
                 
                 ui.separator();
-                ui.label("Sort:");
+                ui.label(self.i18n.t("sort"));
                 
                 // 作成日時ボタン
                 let added_date_text = match self.sort_field {
                     SortField::AddedDate => {
                         if self.sort_order == SortOrder::Ascending {
-                            "作成日時 ↑"
+                            self.i18n.t("sort_added_date_asc")
                         } else {
-                            "作成日時 ↓"
+                            self.i18n.t("sort_added_date_desc")
                         }
                     }
-                    _ => "作成日時"
+                    _ => self.i18n.t("sort_added_date")
                 };
                 if ui.button(added_date_text).clicked() {
                     if self.sort_field == SortField::AddedDate {
@@ -1476,12 +1662,12 @@ impl eframe::App for VideoPlayerApp {
                 let file_name_text = match self.sort_field {
                     SortField::FileName => {
                         if self.sort_order == SortOrder::Ascending {
-                            "ファイル名 ↑"
+                            self.i18n.t("sort_filename_asc")
                         } else {
-                            "ファイル名 ↓"
+                            self.i18n.t("sort_filename_desc")
                         }
                     }
-                    _ => "ファイル名"
+                    _ => self.i18n.t("sort_filename")
                 };
                 if ui.button(file_name_text).clicked() {
                     if self.sort_field == SortField::FileName {
@@ -1500,12 +1686,12 @@ impl eframe::App for VideoPlayerApp {
                 let duration_text = match self.sort_field {
                     SortField::Duration => {
                         if self.sort_order == SortOrder::Ascending {
-                            "動画時間 ↑"
+                            self.i18n.t("sort_duration_asc")
                         } else {
-                            "動画時間 ↓"
+                            self.i18n.t("sort_duration_desc")
                         }
                     }
-                    _ => "動画時間"
+                    _ => self.i18n.t("sort_duration")
                 };
                 if ui.button(duration_text).clicked() {
                     if self.sort_field == SortField::Duration {
@@ -1598,30 +1784,48 @@ impl eframe::App for VideoPlayerApp {
                         settings_changed = true;
                     }
                     
-                    if ui.checkbox(&mut self.use_gpu_hq, &self.i18n.t("use_gpu_hq")).changed() {
-                        settings_changed = true;
-                    }
-                    ui.label("⚠ GPU high-quality mode uses advanced shaders for better image quality");
+                    ui.add_enabled_ui(self.is_premium, |ui| {
+                        if ui.checkbox(&mut self.use_gpu_hq, &self.i18n.t("use_gpu_hq")).changed() {
+                            settings_changed = true;
+                        }
+                        if !self.is_premium {
+                            ui.label("🔒 Premium feature");
+                        } else {
+                            ui.label("⚠ GPU high-quality mode uses advanced shaders for better image quality");
+                        }
+                    });
                     
-                    if ui.checkbox(&mut self.use_frame_interpolation, &self.i18n.t("use_frame_interpolation")).changed() {
-                        settings_changed = true;
-                    }
-                    ui.label("⚠ Frame interpolation enables smooth motion between frames");
+                    ui.add_enabled_ui(self.is_premium, |ui| {
+                        if ui.checkbox(&mut self.use_frame_interpolation, &self.i18n.t("use_frame_interpolation")).changed() {
+                            settings_changed = true;
+                        }
+                        if !self.is_premium {
+                            ui.label("🔒 Premium feature");
+                        } else {
+                            ui.label("⚠ Frame interpolation enables smooth motion between frames");
+                        }
+                    });
                     
                     ui.separator();
                     
-                    if ui.checkbox(&mut self.use_custom_shaders, &self.i18n.t("use_custom_shaders")).changed() {
-                        settings_changed = true;
-                    }
-                    
-                    // Button to open shader management window
-                    if self.use_custom_shaders {
-                        if ui.button(&self.i18n.t("manage_shaders")).clicked() {
-                            self.show_shader_management_window = true;
+                    ui.add_enabled_ui(self.is_premium, |ui| {
+                        if ui.checkbox(&mut self.use_custom_shaders, &self.i18n.t("use_custom_shaders")).changed() {
+                            settings_changed = true;
                         }
-                    } else {
-                        ui.label("📁 Place .glsl shader files in the mpv/glsl_shaders directory");
-                    }
+                        
+                        // Button to open shader management window
+                        if self.use_custom_shaders {
+                            if ui.button(&self.i18n.t("manage_shaders")).clicked() {
+                                self.show_shader_management_window = true;
+                            }
+                        } else {
+                            ui.label("📁 Place .glsl shader files in the mpv/glsl_shaders directory");
+                        }
+                        
+                        if !self.is_premium {
+                            ui.label("🔒 Premium feature");
+                        }
+                    });
                     
                     ui.separator();
                     ui.heading(&self.i18n.t("management"));
@@ -1652,6 +1856,44 @@ impl eframe::App for VideoPlayerApp {
                         self.use_frame_interpolation = false;
                         settings_changed = true;
                     }
+                    
+                    // License section
+                    ui.separator();
+                    ui.heading("Premium License");
+                    ui.separator();
+                    
+                    if let Some(ref license) = self.current_license {
+                        // Show license info
+                        ui.horizontal(|ui| {
+                            ui.label(&self.i18n.t("issued_to"));
+                            ui.label(&license.info.issued_to);
+                        });
+                        
+                        ui.horizontal(|ui| {
+                            ui.label(&self.i18n.t("expires"));
+                            let expires_text = license.info.expires_at
+                                .map(|ts| license::format_timestamp(ts))
+                                .unwrap_or_else(|| self.i18n.t("never_expires"));
+                            ui.label(&expires_text);
+                        });
+                        
+                        ui.horizontal(|ui| {
+                            ui.label(&self.i18n.t("license_status"));
+                            if license.is_expired {
+                                ui.label(egui::RichText::new("❌ Expired").color(egui::Color32::RED));
+                            } else if license.is_valid {
+                                ui.label(egui::RichText::new("✅ Active").color(egui::Color32::GREEN));
+                            } else {
+                                ui.label(egui::RichText::new("❌ Invalid").color(egui::Color32::RED));
+                            }
+                        });
+                    } else {
+                        ui.label("No license activated");
+                    }
+                    
+                    if ui.button(&self.i18n.t("enter_license_key")).clicked() {
+                        self.show_license_window = true;
+                    }
                 });
         }
         
@@ -1677,7 +1919,7 @@ impl eframe::App for VideoPlayerApp {
                     ui.label(&registered_folders_text);
                     ui.separator();
                     
-                    let mut folder_to_remove: Option<String> = None;
+                    let mut folder_to_confirm: Option<(String, usize)> = None;
                     let mut folders_changed = false;
                     
                     // Display folders with delete buttons
@@ -1689,26 +1931,19 @@ impl eframe::App for VideoPlayerApp {
                                 ui.horizontal(|ui| {
                                     ui.label(&folder);
                                     if ui.button("❌").clicked() {
-                                        folder_to_remove = Some(folder.clone());
+                                        // Count videos in this folder
+                                        let video_count = self.database.videos.iter()
+                                            .filter(|v| v.folder.as_ref() == Some(&folder))
+                                            .count();
+                                        folder_to_confirm = Some((folder.clone(), video_count));
                                     }
                                 });
                             }
                         });
                     
-                    // Remove folder if requested
-                    if let Some(folder) = folder_to_remove {
-                        self.database.folders.retain(|f| f != &folder);
-                        
-                        // Also remove from watched_folders (match by folder name)
-                        self.watched_folders.retain(|path| {
-                            path.file_name()
-                                .and_then(|n| n.to_str())
-                                .map(|name| name != folder)
-                                .unwrap_or(true)
-                        });
-                        
-                        eprintln!("[folder_management] Removed folder '{}' from watched list", folder);
-                        folders_changed = true;
+                    // Set confirmation if requested
+                    if let Some((folder, count)) = folder_to_confirm {
+                        self.folder_delete_confirm = Some((folder, count));
                     }
                     
                     ui.separator();
@@ -1732,6 +1967,90 @@ impl eframe::App for VideoPlayerApp {
                 });
             
             self.show_folder_management_window = window_open;
+        }
+        
+        // Folder Delete Confirmation Window
+        if self.folder_delete_confirm.is_some() {
+            let confirm_title = self.i18n.t("confirm_folder_delete_title");
+            let confirm_msg = self.i18n.t("confirm_folder_delete");
+            let cancel_text = self.i18n.t("cancel");
+            
+            let mut should_close = false;
+            let mut delete_with_videos = false;
+            let mut delete_folder_only = false;
+            
+            egui::Window::new(&confirm_title)
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    if let Some((folder_name, video_count)) = &self.folder_delete_confirm {
+                        ui.label(format!("📁 {}", folder_name));
+                        ui.separator();
+                        ui.label(&confirm_msg);
+                        
+                        if *video_count > 0 {
+                            ui.add_space(8.0);
+                            let videos_msg = self.i18n.t("folder_contains_videos")
+                                .replace("{}", &video_count.to_string());
+                            ui.label(egui::RichText::new(videos_msg).color(egui::Color32::YELLOW));
+                        }
+                        
+                        ui.add_space(16.0);
+                        
+                        ui.horizontal(|ui| {
+                            if *video_count > 0 {
+                                // Show both options when there are videos
+                                if ui.button(egui::RichText::new(self.i18n.t("delete_videos_too")).color(egui::Color32::RED)).clicked() {
+                                    delete_with_videos = true;
+                                    should_close = true;
+                                }
+                                if ui.button(self.i18n.t("folder_only")).clicked() {
+                                    delete_folder_only = true;
+                                    should_close = true;
+                                }
+                            } else {
+                                // No videos, just confirm folder removal
+                                if ui.button("OK").clicked() {
+                                    delete_folder_only = true;
+                                    should_close = true;
+                                }
+                            }
+                            if ui.button(&cancel_text).clicked() {
+                                should_close = true;
+                            }
+                        });
+                    }
+                });
+            
+            // Process deletion after window is closed
+            if should_close {
+                if let Some((folder, _video_count)) = self.folder_delete_confirm.take() {
+                    if delete_with_videos || delete_folder_only {
+                        // Remove folder from list
+                        self.database.folders.retain(|f| f != &folder);
+                        
+                        // Remove from watched_folders
+                        self.watched_folders.retain(|path| {
+                            path.file_name()
+                                .and_then(|n| n.to_str())
+                                .map(|name| name != folder)
+                                .unwrap_or(true)
+                        });
+                        
+                        if delete_with_videos {
+                            // Also delete video profiles
+                            self.database.videos.retain(|v| v.folder.as_ref() != Some(&folder));
+                            eprintln!("[folder_management] Removed folder '{}' and its video profiles", folder);
+                        } else {
+                            eprintln!("[folder_management] Removed folder '{}' (kept video profiles)", folder);
+                        }
+                        
+                        self.save_settings();
+                        let _ = database::save_database(&self.database);
+                    }
+                }
+            }
         }
         
         // Shader Management Window
@@ -1910,6 +2229,137 @@ impl eframe::App for VideoPlayerApp {
                 self.mpv_shortcuts_open = window_open;
             }
         }
+        
+        // Premium promotion window (shown when video limit reached)
+        if self.show_premium_promotion_window {
+            egui::Window::new(&self.i18n.t("premium_promotion_title"))
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.set_width(500.0);
+                    
+                    ui.label(egui::RichText::new(&self.i18n.t("premium_limit_reached")).size(16.0));
+                    ui.add_space(10.0);
+                    
+                    ui.separator();
+                    ui.add_space(5.0);
+                    
+                    ui.label(egui::RichText::new(&self.i18n.t("premium_unlock_features")).strong().size(14.0));
+                    ui.add_space(5.0);
+                    
+                    // List premium features
+                    ui.label(&self.i18n.t("premium_unlimited_storage"));
+                    ui.label(&self.i18n.t("premium_scene_generation"));
+                    ui.label(&self.i18n.t("premium_star_ratings"));
+                    ui.label(&self.i18n.t("premium_glsl_shaders"));
+                    ui.label(&self.i18n.t("premium_frame_interpolation"));
+                    ui.label(&self.i18n.t("premium_gpu_rendering"));
+                    
+                    ui.add_space(10.0);
+                    ui.separator();
+                    ui.add_space(5.0);
+                    
+                    // Buttons
+                    ui.horizontal(|ui| {
+                        // License activation button
+                        if ui.button(&self.i18n.t("enter_license_key")).clicked() {
+                            self.show_license_window = true;
+                            self.show_premium_promotion_window = false;
+                        }
+                        
+                        // Close button
+                        if ui.button(&self.i18n.t("got_it")).clicked() {
+                            self.show_premium_promotion_window = false;
+                        }
+                    });
+                });
+        }
+        
+        // License activation window
+        if self.show_license_window {
+            egui::Window::new(&self.i18n.t("activate_license"))
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    ui.set_width(500.0);
+                    
+                    ui.label(egui::RichText::new(&self.i18n.t("license_key_label")).strong());
+                    ui.add_space(5.0);
+                    
+                    // License key input
+                    let response = ui.add(
+                        egui::TextEdit::multiline(&mut self.license_input)
+                            .desired_width(480.0)
+                            .desired_rows(4)
+                            .hint_text(&self.i18n.t("paste_license_key"))
+                    );
+                    
+                    // Auto-focus input on first show
+                    if response.has_focus() || response.gained_focus() {
+                        // Input is focused
+                    }
+                    
+                    ui.add_space(10.0);
+                    
+                    // Status message
+                    if let Some(ref message) = self.license_status_message {
+                        ui.label(egui::RichText::new(message).size(12.0));
+                        ui.add_space(10.0);
+                    }
+                    
+                    // Buttons
+                    ui.horizontal(|ui| {
+                        if ui.button(&self.i18n.t("activate")).clicked() {
+                            let license_key = self.license_input.trim().to_string();
+                            if !license_key.is_empty() {
+                                self.activate_license(&license_key);
+                            }
+                        }
+                        
+                        if ui.button(&self.i18n.t("cancel")).clicked() {
+                            self.show_license_window = false;
+                            self.license_input.clear();
+                            self.license_status_message = None;
+                        }
+                    });
+                    
+                    // Show current license info if available
+                    if let Some(ref license) = self.current_license {
+                        ui.add_space(10.0);
+                        ui.separator();
+                        ui.add_space(5.0);
+                        
+                        ui.label(egui::RichText::new(&self.i18n.t("license_info")).strong());
+                        ui.add_space(5.0);
+                        
+                        ui.horizontal(|ui| {
+                            ui.label(&self.i18n.t("issued_to"));
+                            ui.label(&license.info.issued_to);
+                        });
+                        
+                        ui.horizontal(|ui| {
+                            ui.label(&self.i18n.t("expires"));
+                            let expires_text = license.info.expires_at
+                                .map(|ts| license::format_timestamp(ts))
+                                .unwrap_or_else(|| self.i18n.t("never_expires"));
+                            ui.label(&expires_text);
+                        });
+                        
+                        ui.horizontal(|ui| {
+                            ui.label(&self.i18n.t("license_status"));
+                            if license.is_expired {
+                                ui.label(egui::RichText::new("❌ Expired").color(egui::Color32::RED));
+                            } else if license.is_valid {
+                                ui.label(egui::RichText::new("✅ Active").color(egui::Color32::GREEN));
+                            } else {
+                                ui.label(egui::RichText::new("❌ Invalid").color(egui::Color32::RED));
+                            }
+                        });
+                    }
+                });
+        }
     }
 }
 
@@ -2016,7 +2466,10 @@ impl VideoPlayerApp {
                             // Double click: play video
                             if response.double_clicked() {
                                 let selected_shader = self.selected_shader.as_deref();
-                                if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation, self.mpv_volume) {
+                                let use_gpu_hq = self.is_premium && self.use_gpu_hq;
+                                let use_custom_shaders = self.is_premium && self.use_custom_shaders;
+                                let use_frame_interpolation = self.is_premium && self.use_frame_interpolation;
+                                if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, use_frame_interpolation, self.mpv_volume) {
                                     eprintln!("Video playback error: {}", e);
                                 }
                             }
@@ -2024,7 +2477,10 @@ impl VideoPlayerApp {
                             response.context_menu(|ui| {
                                 if ui.button(&self.i18n.t("play_video")).clicked() {
                                     let selected_shader = self.selected_shader.as_deref();
-                                    if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation, self.mpv_volume) {
+                                    let use_gpu_hq = self.is_premium && self.use_gpu_hq;
+                                    let use_custom_shaders = self.is_premium && self.use_custom_shaders;
+                                    let use_frame_interpolation = self.is_premium && self.use_frame_interpolation;
+                                    if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, use_frame_interpolation, self.mpv_volume) {
                                         eprintln!("Video playback error: {}", e);
                                     }
                                     ui.close_menu();
@@ -2130,7 +2586,10 @@ impl VideoPlayerApp {
                 // Double click: play video
                 if title_response.double_clicked() {
                     let selected_shader = self.selected_shader.as_deref();
-                    if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, self.use_gpu_hq, self.use_custom_shaders, selected_shader, self.use_frame_interpolation, self.mpv_volume) {
+                    let use_gpu_hq = self.is_premium && self.use_gpu_hq;
+                    let use_custom_shaders = self.is_premium && self.use_custom_shaders;
+                    let use_frame_interpolation = self.is_premium && self.use_frame_interpolation;
+                    if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, use_frame_interpolation, self.mpv_volume) {
                         eprintln!("Video playback error: {}", e);
                     }
                 }

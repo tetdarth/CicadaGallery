@@ -1,7 +1,8 @@
 [package]
-name = "cicadagallaley"
+name = "cicada_gallery"
 version = "0.1.0"
 edition = "2021"
+default-run = "cicada_gallery"
 
 [dependencies]
 # GUI framework
@@ -33,6 +34,12 @@ dirs = "5.0"
 
 # File system watching
 notify = "6.0"
+
+# License verification
+ed25519-dalek = { version = "2.1", features = ["rand_core"] }
+base64 = "0.22"
+hex = "0.4"
+rand = "0.8"
 
 [target.'cfg(windows)'.dependencies]
 winapi = { version = "0.3", features = ["shellapi", "winuser"] }

@@ -10,7 +10,7 @@ pub enum Language {
 
 impl Language {
     pub fn all() -> Vec<Language> {
-        vec![Language::English, Language::Japanese, Language::Chinese]
+        vec![Language::English, Language::Japanese]
     }
     
     pub fn name(&self) -> &'static str {
@@ -61,7 +61,7 @@ impl I18n {
     
     fn load_translations(&mut self) {
         // UI - General
-        self.add("app_title", "Cicada Gallery", "Cicada Gallery", "Cicada Gallery");
+        self.add("app_title", "CicadaGallery", "CicadaGallery", "CicadaGallery");
         self.add("search", "Search", "検索", "搜索");
         self.add("options", "Options", "オプション", "选项");
         self.add("close", "Close", "閉じる", "关闭");
@@ -72,6 +72,18 @@ impl I18n {
         // View modes
         self.add("grid_view", "Grid View", "グリッド表示", "网格视图");
         self.add("list_view", "List View", "リスト表示", "列表视图");
+        
+        // Sort
+        self.add("sort", "Sort:", "並び順:", "排序:");
+        self.add("sort_added_date", "Created Date", "作成日時", "创建日期");
+        self.add("sort_added_date_asc", "Created Date ↑", "作成日時 ↑", "创建日期 ↑");
+        self.add("sort_added_date_desc", "Created Date ↓", "作成日時 ↓", "创建日期 ↓");
+        self.add("sort_filename", "File Name", "ファイル名", "文件名");
+        self.add("sort_filename_asc", "File Name ↑", "ファイル名 ↑", "文件名 ↑");
+        self.add("sort_filename_desc", "File Name ↓", "ファイル名 ↓", "文件名 ↓");
+        self.add("sort_duration", "Duration", "動画時間", "视频时长");
+        self.add("sort_duration_asc", "Duration ↑", "動画時間 ↑", "视频时长 ↑");
+        self.add("sort_duration_desc", "Duration ↓", "動画時間 ↓", "视频时长 ↓");
         
         // Filters
         self.add("filters", "Filters", "フィルター", "筛选");
@@ -169,6 +181,14 @@ impl I18n {
         self.add("no_shader", "No shader", "シェーダーなし", "无着色器");
         self.add("use_frame_interpolation", "Use frame interpolation (motion smoothing)", "フレーム補間を使用 (モーション補間)", "使用帧插值 (运动平滑)");
         
+        // Folder deletion
+        self.add("confirm_folder_delete_title", "Delete Folder", "フォルダを削除", "删除文件夹");
+        self.add("confirm_folder_delete", "Are you sure you want to remove this folder?", "このフォルダを削除してもよろしいですか？", "确定要删除此文件夹吗？");
+        self.add("folder_contains_videos", "This folder contains {} video(s).", "このフォルダには{}件の動画があります。", "此文件夹包含{}个视频。");
+        self.add("delete_videos_too", "Also delete video profiles", "動画のプロファイルも削除する", "同时删除视频配置");
+        self.add("keep_videos", "Keep video profiles", "動画のプロファイルを残す", "保留视频配置");
+        self.add("folder_only", "Remove folder only", "フォルダのみ削除", "仅删除文件夹");
+        
         // Confirmation dialogs
         self.add("confirm_delete", "Are you sure you want to delete this video from the gallery?", "このギャラリーから動画を削除してもよろしいですか？", "确定要从图库中删除此视频吗？");
         self.add("confirm_delete_video", "Are you sure you want to delete this video?", "この動画を削除してもよろしいですか？", "确定要删除此视频吗？");
@@ -189,6 +209,38 @@ impl I18n {
         // Tooltips
         self.add("click_play_ctrl_select", "Click: Play | Ctrl+Click: Select | Shift+Click: Range select", "クリック: 再生 | Ctrl+クリック: 選択 | Shift+クリック: 範囲選択", "点击：播放 | Ctrl+点击：选择 | Shift+点击：范围选择");
         self.add("right_click_options", "Right-click for options", "右クリックでオプション", "右键单击查看选项");
+        
+        // Premium features
+        self.add("scene_thumbnails_locked", "🔒 Scene Thumbnails", "🔒 シーンサムネイル", "🔒 场景缩略图");
+        self.add("premium_feature_available", "This feature is available in Premium version", "この機能はプレミアム版で利用可能です", "此功能在高级版中可用");
+        self.add("premium_features", "Premium features:", "プレミアム機能:", "高级功能:");
+        self.add("premium_scene_generation", "• Scene thumbnail generation", "• シーンサムネイル生成", "• 场景缩略图生成");
+        self.add("premium_star_ratings", "• 1-5 star ratings", "• 1-5星評価", "• 1-5星评分");
+        self.add("premium_glsl_shaders", "• GLSL shaders", "• GLSLシェーダー", "• GLSL着色器");
+        self.add("premium_frame_interpolation", "• Frame interpolation", "• フレーム補間", "• 帧插值");
+        self.add("premium_gpu_rendering", "• GPU high-quality rendering", "• GPU高品質レンダリング", "• GPU高质量渲染");
+        self.add("premium_unlimited_storage", "• Unlimited video storage", "• 無制限の動画プロファイル", "• 无限视频存储");
+        
+        // Premium promotion
+        self.add("premium_promotion_title", "🌟 Upgrade to Premium", "🌟 プレミアム版にアップグレード", "🌟 升级到高级版");
+        self.add("premium_limit_reached", "You've reached the free tier limit of 100 videos.", "無償版の上限（100本）に達しました。", "您已达到免费版的100个视频上限。");
+        self.add("premium_unlock_features", "Upgrade to Premium to unlock:", "プレミアム版で以下の機能をアンロック:", "升级到高级版以解锁:");
+        self.add("premium_how_to_upgrade", "To upgrade, edit settings.json and set \"is_premium\": true", "アップグレードするには、settings.jsonを編集して \"is_premium\": true に設定してください", "要升级，请编辑settings.json并设置 \"is_premium\": true");
+        self.add("premium_settings_location", "Settings file location:", "設定ファイルの場所:", "设置文件位置:");
+        self.add("got_it", "Got it!", "了解しました！", "明白了！");
+        
+        // License activation
+        self.add("enter_license_key", "Enter License Key", "ライセンスキーを入力", "输入许可证密钥");
+        self.add("activate_license", "Activate License", "ライセンスを有効化", "激活许可证");
+        self.add("license_key_label", "License Key:", "ライセンスキー:", "许可证密钥:");
+        self.add("paste_license_key", "Paste your license key here", "ライセンスキーを貼り付けてください", "在此粘贴您的许可证密钥");
+        self.add("activate", "Activate", "有効化", "激活");
+        self.add("license_info", "License Information", "ライセンス情報", "许可证信息");
+        self.add("issued_to", "Issued to:", "発行先:", "发给:");
+        self.add("expires", "Expires:", "有効期限:", "到期:");
+        self.add("never_expires", "Never", "無期限", "永不过期");
+        self.add("license_status", "Status:", "ステータス:", "状态:");
+        self.add("view_license", "View License", "ライセンス情報", "查看许可证");
     }
     
     fn add(&mut self, key: &str, en: &str, ja: &str, zh: &str) {

@@ -5,7 +5,7 @@ use std::fs;
 /// Get database file path
 pub fn get_database_path() -> PathBuf {
     let mut path = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
-    path.push("cicadaGallaley");
+    path.push("CicadaGallery");
     
     // Create directory if it doesn't exist
     if !path.exists() {
@@ -19,7 +19,7 @@ pub fn get_database_path() -> PathBuf {
 /// Get settings file path
 pub fn get_settings_path() -> PathBuf {
     let mut path = dirs::data_local_dir().unwrap_or_else(|| PathBuf::from("."));
-    path.push("cicadaGallaley");
+    path.push("CicadaGallery");
     
     // Create directory if it doesn't exist
     if !path.exists() {

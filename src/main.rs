@@ -7,6 +7,7 @@ mod video_player;
 mod database;
 mod scene_detection;
 mod i18n;
+mod license;
 mod app;
 
 use app::VideoPlayerApp;
