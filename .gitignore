@@ -1,1 +1,6 @@
 /target
+debug.log
+cache/
+.history/
+*.exe
+*.pdb
