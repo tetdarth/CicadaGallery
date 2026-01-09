@@ -20,8 +20,9 @@ pub struct VideoPlayerApp {
     pub selected_video: Option<String>,
     pub current_view: ViewMode,
     pub search_query: String,
-    pub selected_folder_filter: Option<String>,
-    pub selected_tag_filter: Option<String>,
+    pub selected_folder_filter: HashSet<String>, // Multiple folder selection (premium feature)
+    pub selected_tag_filter: HashSet<String>, // Multiple tag selection (premium feature)
+    pub tag_filter_mode: FilterMode, // AND or OR mode for tag filter (premium feature)
     pub min_rating_filter: u8, // 0 = show all, 1-5 = show videos with rating >= this value
     pub show_options_window: bool,
     pub show_folder_management_window: bool, // Show folder management window
@@ -88,6 +89,12 @@ pub enum SortOrder {
     Descending,
 }
 
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum FilterMode {
+    Or,  // Any of the selected (OR)
+    And, // All of the selected (AND)
+}
+
 impl Default for VideoPlayerApp {
     fn default() -> Self {
         // Load database
@@ -149,8 +156,9 @@ impl Default for VideoPlayerApp {
             selected_video: None,
             current_view: ViewMode::Grid,
             search_query: String::new(),
-            selected_folder_filter: None,
-            selected_tag_filter: None,
+            selected_folder_filter: HashSet::new(),
+            selected_tag_filter: HashSet::new(),
+            tag_filter_mode: FilterMode::Or,
             min_rating_filter: 0,
             show_options_window: false,
             show_folder_management_window: false,
@@ -941,14 +949,31 @@ impl VideoPlayerApp {
             videos.retain(|v| v.rating >= self.min_rating_filter);
         }
         
-        // フォルダフィルタ
-        if let Some(folder) = &self.selected_folder_filter {
-            videos.retain(|v| v.folder.as_deref() == Some(folder));
+        // フォルダフィルタ（複数選択対応）
+        if !self.selected_folder_filter.is_empty() {
+            videos.retain(|v| {
+                if let Some(folder) = &v.folder {
+                    self.selected_folder_filter.contains(folder)
+                } else {
+                    false
+                }
+            });
         }
         
-        // タグフィルタ
-        if let Some(tag) = &self.selected_tag_filter {
-            videos.retain(|v| v.tags.contains(tag));
+        // タグフィルタ（複数選択対応、AND/OR切り替え）
+        if !self.selected_tag_filter.is_empty() {
+            videos.retain(|v| {
+                match self.tag_filter_mode {
+                    FilterMode::Or => {
+                        // OR: 選択されたタグのいずれかを持つ動画を表示
+                        v.tags.iter().any(|t| self.selected_tag_filter.contains(t))
+                    }
+                    FilterMode::And => {
+                        // AND: 選択されたタグをすべて持つ動画のみ表示
+                        self.selected_tag_filter.iter().all(|selected_tag| v.tags.contains(selected_tag))
+                    }
+                }
+            });
         }
         
         // 検索クエリ
@@ -1183,14 +1208,26 @@ impl eframe::App for VideoPlayerApp {
             // Folder filter
             ui.label(&self.i18n.t("folders"));
             if ui.button(&self.i18n.t("all")).clicked() {
-                self.selected_folder_filter = None;
+                self.selected_folder_filter.clear();
             }
             for folder in &self.database.folders.clone() {
-                if ui.selectable_label(
-                    self.selected_folder_filter.as_deref() == Some(folder),
-                    folder
-                ).clicked() {
-                    self.selected_folder_filter = Some(folder.clone());
+                let is_selected = self.selected_folder_filter.contains(folder);
+                if self.is_premium {
+                    // Premium: Multiple selection with checkboxes
+                    let mut selected = is_selected;
+                    if ui.checkbox(&mut selected, folder).changed() {
+                        if selected {
+                            self.selected_folder_filter.insert(folder.clone());
+                        } else {
+                            self.selected_folder_filter.remove(folder);
+                        }
+                    }
+                } else {
+                    // Free: Single selection only
+                    if ui.selectable_label(is_selected, folder).clicked() {
+                        self.selected_folder_filter.clear();
+                        self.selected_folder_filter.insert(folder.clone());
+                    }
                 }
             }
             
@@ -1198,15 +1235,39 @@ impl eframe::App for VideoPlayerApp {
             
             // Tag filter
             ui.label(&self.i18n.t("tags_colon"));
-            if ui.button(&self.i18n.t("all")).clicked() {
-                self.selected_tag_filter = None;
-            }
+            ui.horizontal(|ui| {
+                if ui.button(&self.i18n.t("all")).clicked() {
+                    self.selected_tag_filter.clear();
+                }
+                // AND/OR toggle (only show when premium and multiple tags selected)
+                if self.is_premium && self.selected_tag_filter.len() > 1 {
+                    ui.separator();
+                    if ui.selectable_label(self.tag_filter_mode == FilterMode::Or, "OR").clicked() {
+                        self.tag_filter_mode = FilterMode::Or;
+                    }
+                    if ui.selectable_label(self.tag_filter_mode == FilterMode::And, "AND").clicked() {
+                        self.tag_filter_mode = FilterMode::And;
+                    }
+                }
+            });
             for tag in &self.database.tags.clone() {
-                if ui.selectable_label(
-                    self.selected_tag_filter.as_deref() == Some(tag),
-                    tag
-                ).clicked() {
-                    self.selected_tag_filter = Some(tag.clone());
+                let is_selected = self.selected_tag_filter.contains(tag);
+                if self.is_premium {
+                    // Premium: Multiple selection with checkboxes
+                    let mut selected = is_selected;
+                    if ui.checkbox(&mut selected, tag).changed() {
+                        if selected {
+                            self.selected_tag_filter.insert(tag.clone());
+                        } else {
+                            self.selected_tag_filter.remove(tag);
+                        }
+                    }
+                } else {
+                    // Free: Single selection only
+                    if ui.selectable_label(is_selected, tag).clicked() {
+                        self.selected_tag_filter.clear();
+                        self.selected_tag_filter.insert(tag.clone());
+                    }
                 }
             }
             
