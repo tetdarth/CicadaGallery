@@ -283,6 +283,12 @@ pub struct AppSettings {
     pub mpv_volume: u8, // MPV volume (0-100)
     #[serde(default)]
     pub license_key: Option<String>, // Signed license key
+    #[serde(default)]
+    pub window_size: Option<(f32, f32)>, // Window size (width, height)
+    #[serde(default)]
+    pub window_position: Option<(f32, f32)>, // Window position (x, y)
+    #[serde(default)]
+    pub window_maximized: bool, // Window maximized state
 }
 
 fn default_mpv_shortcuts_open() -> bool {
@@ -311,6 +317,9 @@ impl Default for AppSettings {
             mpv_shortcuts_open: true,
             mpv_volume: 100,
             license_key: None,
+            window_size: None,
+            window_position: None,
+            window_maximized: false,
         }
     }
 }

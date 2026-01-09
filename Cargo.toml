@@ -35,6 +35,9 @@ dirs = "5.0"
 # File system watching
 notify = "6.0"
 
+# SQLite database
+rusqlite = { version = "0.31", features = ["bundled"] }
+
 # License verification
 ed25519-dalek = { version = "2.1", features = ["rand_core"] }
 base64 = "0.22"

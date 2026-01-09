@@ -65,6 +65,8 @@ pub struct VideoPlayerApp {
     pub license_status_message: Option<String>, // License activation status message
     pub current_license: Option<license::License>, // Currently activated license
     pub folder_delete_confirm: Option<(String, usize)>, // (folder_name, video_count) pending deletion
+    pub last_window_size: Option<(f32, f32)>, // Track last window size for saving on exit
+    pub last_window_pos: Option<(f32, f32)>, // Track last window position
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -192,6 +194,8 @@ impl Default for VideoPlayerApp {
             license_status_message: None,
             current_license,
             folder_delete_confirm: None,
+            last_window_size: None,
+            last_window_pos: None,
         }
     }
 }
@@ -269,6 +273,9 @@ impl VideoPlayerApp {
             mpv_shortcuts_open: self.mpv_shortcuts_open,
             mpv_volume: self.mpv_volume,
             license_key,
+            window_size: self.last_window_size,
+            window_position: self.last_window_pos,
+            window_maximized: false, // Don't save maximized state to avoid flicker on startup
         };
         
         if let Err(e) = database::save_settings(&settings) {
@@ -994,6 +1001,16 @@ impl VideoPlayerApp {
 
 impl eframe::App for VideoPlayerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Track window size and position for saving on exit
+        ctx.input(|i| {
+            if let Some(rect) = i.viewport().inner_rect {
+                self.last_window_size = Some((rect.width(), rect.height()));
+            }
+            if let Some(pos) = i.viewport().outer_rect {
+                self.last_window_pos = Some((pos.min.x, pos.min.y));
+            }
+        });
+        
         // Apply theme based on dark_mode setting
         if self.dark_mode {
             ctx.set_visuals(egui::Visuals::dark());
@@ -2359,6 +2376,21 @@ impl eframe::App for VideoPlayerApp {
                         });
                     }
                 });
+        }
+    }
+    
+    fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
+        // Save window state on exit (size and position only, not maximized state)
+        let mut settings = database::load_settings().unwrap_or_default();
+        
+        settings.window_size = self.last_window_size;
+        settings.window_position = self.last_window_pos;
+        
+        if let Err(e) = database::save_settings(&settings) {
+            eprintln!("[app] Failed to save window state: {}", e);
+        } else {
+            eprintln!("[app] Window state saved: size={:?}, pos={:?}", 
+                self.last_window_size, self.last_window_pos);
         }
     }
 }
