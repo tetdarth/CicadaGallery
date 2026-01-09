@@ -2356,7 +2356,9 @@ impl eframe::App for VideoPlayerApp {
         
         // License activation window
         if self.show_license_window {
+            let mut window_open = true;
             egui::Window::new(&self.i18n.t("activate_license"))
+                .open(&mut window_open)
                 .collapsible(false)
                 .resizable(false)
                 .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
@@ -2437,6 +2439,13 @@ impl eframe::App for VideoPlayerApp {
                         });
                     }
                 });
+            
+            // Handle window close button (X)
+            if !window_open {
+                self.show_license_window = false;
+                self.license_input.clear();
+                self.license_status_message = None;
+            }
         }
     }
     
