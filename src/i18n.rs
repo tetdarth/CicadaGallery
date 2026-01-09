@@ -229,6 +229,7 @@ impl I18n {
         self.add("premium_frame_interpolation", "• Frame interpolation", "• フレーム補間", "• 帧插值");
         self.add("premium_gpu_rendering", "• GPU high-quality rendering", "• GPU高品質レンダリング", "• GPU高质量渲染");
         self.add("premium_unlimited_storage", "• Unlimited video storage", "• 無制限の動画プロファイル", "• 无限视频存储");
+        self.add("premium_multi_select", "• Multi-select for folders/tags", "• フォルダ/タグの複数選択", "• 文件夹/标签多选");
         
         // Premium promotion
         self.add("premium_promotion_title", "🌟 Upgrade to Premium", "🌟 プレミアム版にアップグレード", "🌟 升级到高级版");

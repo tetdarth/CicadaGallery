@@ -1706,6 +1706,7 @@ impl eframe::App for VideoPlayerApp {
                                 ui.label(&self.i18n.t("premium_frame_interpolation"));
                                 ui.label(&self.i18n.t("premium_gpu_rendering"));
                                 ui.label(&self.i18n.t("premium_unlimited_storage"));
+                                ui.label(&self.i18n.t("premium_multi_select"));
                             });
                         }
                     }
@@ -2473,6 +2474,7 @@ impl eframe::App for VideoPlayerApp {
                     ui.label(&self.i18n.t("premium_glsl_shaders"));
                     ui.label(&self.i18n.t("premium_frame_interpolation"));
                     ui.label(&self.i18n.t("premium_gpu_rendering"));
+                    ui.label(&self.i18n.t("premium_multi_select"));
                     
                     ui.add_space(10.0);
                     ui.separator();
