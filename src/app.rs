@@ -26,6 +26,7 @@ pub struct VideoPlayerApp {
     pub min_rating_filter: u8, // 0 = show all, 1-5 = show videos with rating >= this value
     pub show_options_window: bool,
     pub show_folder_management_window: bool, // Show folder management window
+    pub show_tag_management_window: bool, // Show tag management window
     pub show_shader_management_window: bool, // Show shader management window
     pub show_mpv_shortcuts: bool, // Show mpv keyboard shortcuts panel
     pub mpv_shortcuts_open: bool, // MPV shortcuts panel open/collapsed state
@@ -66,6 +67,7 @@ pub struct VideoPlayerApp {
     pub license_status_message: Option<String>, // License activation status message
     pub current_license: Option<license::License>, // Currently activated license
     pub folder_delete_confirm: Option<(String, usize)>, // (folder_name, video_count) pending deletion
+    pub tag_delete_confirm: Option<(String, usize)>, // (tag_name, video_count) pending deletion
     pub last_window_size: Option<(f32, f32)>, // Track last window size for saving on exit
     pub last_window_pos: Option<(f32, f32)>, // Track last window position
 }
@@ -162,6 +164,7 @@ impl Default for VideoPlayerApp {
             min_rating_filter: 0,
             show_options_window: false,
             show_folder_management_window: false,
+            show_tag_management_window: false,
             show_shader_management_window: false,
             show_mpv_shortcuts: true,
             mpv_shortcuts_open: settings.mpv_shortcuts_open,
@@ -202,6 +205,7 @@ impl Default for VideoPlayerApp {
             license_status_message: None,
             current_license,
             folder_delete_confirm: None,
+            tag_delete_confirm: None,
             last_window_size: None,
             last_window_pos: None,
         }
@@ -1210,26 +1214,31 @@ impl eframe::App for VideoPlayerApp {
             if ui.button(&self.i18n.t("all")).clicked() {
                 self.selected_folder_filter.clear();
             }
-            for folder in &self.database.folders.clone() {
-                let is_selected = self.selected_folder_filter.contains(folder);
-                if self.is_premium {
-                    // Premium: Multiple selection with checkboxes
-                    let mut selected = is_selected;
-                    if ui.checkbox(&mut selected, folder).changed() {
-                        if selected {
-                            self.selected_folder_filter.insert(folder.clone());
+            egui::ScrollArea::vertical()
+                .id_salt("folder_filter_scroll")
+                .max_height(300.0)
+                .show(ui, |ui| {
+                    for folder in &self.database.folders.clone() {
+                        let is_selected = self.selected_folder_filter.contains(folder);
+                        if self.is_premium {
+                            // Premium: Multiple selection with checkboxes
+                            let mut selected = is_selected;
+                            if ui.checkbox(&mut selected, folder).changed() {
+                                if selected {
+                                    self.selected_folder_filter.insert(folder.clone());
+                                } else {
+                                    self.selected_folder_filter.remove(folder);
+                                }
+                            }
                         } else {
-                            self.selected_folder_filter.remove(folder);
+                            // Free: Single selection only
+                            if ui.selectable_label(is_selected, folder).clicked() {
+                                self.selected_folder_filter.clear();
+                                self.selected_folder_filter.insert(folder.clone());
+                            }
                         }
                     }
-                } else {
-                    // Free: Single selection only
-                    if ui.selectable_label(is_selected, folder).clicked() {
-                        self.selected_folder_filter.clear();
-                        self.selected_folder_filter.insert(folder.clone());
-                    }
-                }
-            }
+                });
             
             ui.separator();
             
@@ -1250,26 +1259,31 @@ impl eframe::App for VideoPlayerApp {
                     }
                 }
             });
-            for tag in &self.database.tags.clone() {
-                let is_selected = self.selected_tag_filter.contains(tag);
-                if self.is_premium {
-                    // Premium: Multiple selection with checkboxes
-                    let mut selected = is_selected;
-                    if ui.checkbox(&mut selected, tag).changed() {
-                        if selected {
-                            self.selected_tag_filter.insert(tag.clone());
+            egui::ScrollArea::vertical()
+                .id_salt("tag_filter_scroll")
+                .max_height(300.0)
+                .show(ui, |ui| {
+                    for tag in &self.database.tags.clone() {
+                        let is_selected = self.selected_tag_filter.contains(tag);
+                        if self.is_premium {
+                            // Premium: Multiple selection with checkboxes
+                            let mut selected = is_selected;
+                            if ui.checkbox(&mut selected, tag).changed() {
+                                if selected {
+                                    self.selected_tag_filter.insert(tag.clone());
+                                } else {
+                                    self.selected_tag_filter.remove(tag);
+                                }
+                            }
                         } else {
-                            self.selected_tag_filter.remove(tag);
+                            // Free: Single selection only
+                            if ui.selectable_label(is_selected, tag).clicked() {
+                                self.selected_tag_filter.clear();
+                                self.selected_tag_filter.insert(tag.clone());
+                            }
                         }
                     }
-                } else {
-                    // Free: Single selection only
-                    if ui.selectable_label(is_selected, tag).clicked() {
-                        self.selected_tag_filter.clear();
-                        self.selected_tag_filter.insert(tag.clone());
-                    }
-                }
-            }
+                });
             
             ui.separator();
             
@@ -1472,7 +1486,14 @@ impl eframe::App for VideoPlayerApp {
                             let target_videos: Vec<String> = if self.selected_videos.is_empty() {
                                 vec![video_id_for_tags.clone()]
                             } else {
-                                self.selected_videos.iter().cloned().collect()
+                                // 複数選択時はselected_videoも含める
+                                let mut vids: Vec<String> = self.selected_videos.iter().cloned().collect();
+                                if let Some(sel) = &self.selected_video {
+                                    if !vids.contains(sel) {
+                                        vids.push(sel.clone());
+                                    }
+                                }
+                                vids
                             };
                             
                             let is_multi = target_videos.len() > 1;
@@ -1914,6 +1935,11 @@ impl eframe::App for VideoPlayerApp {
                         self.show_folder_management_window = true;
                     }
                     
+                    // Button to open tag management window
+                    if ui.button(&self.i18n.t("manage_tags")).clicked() {
+                        self.show_tag_management_window = true;
+                    }
+                    
                     // Button to open/show MPV shortcuts panel
                     if ui.button("Show MPV Shortcuts").clicked() {
                         self.mpv_shortcuts_open = true;
@@ -2045,6 +2071,120 @@ impl eframe::App for VideoPlayerApp {
                 });
             
             self.show_folder_management_window = window_open;
+        }
+        
+        // Tag Management Window
+        if self.show_tag_management_window {
+            let tag_management_title = self.i18n.t("tag_management");
+            let registered_tags_text = self.i18n.t("registered_tags");
+            
+            let mut window_open = self.show_tag_management_window;
+            
+            egui::Window::new(&tag_management_title)
+                .open(&mut window_open)
+                .resizable(true)
+                .default_width(400.0)
+                .show(ctx, |ui| {
+                    ui.label(&registered_tags_text);
+                    ui.separator();
+                    
+                    let mut tag_to_confirm: Option<(String, usize)> = None;
+                    
+                    // Display tags with delete buttons
+                    egui::ScrollArea::vertical()
+                        .max_height(300.0)
+                        .show(ui, |ui| {
+                            let tags = self.database.tags.clone();
+                            for tag in tags {
+                                ui.horizontal(|ui| {
+                                    ui.label(format!("🏷 {}", &tag));
+                                    if ui.button("❌").clicked() {
+                                        // Count videos using this tag
+                                        let video_count = self.database.videos.iter()
+                                            .filter(|v| v.tags.contains(&tag))
+                                            .count();
+                                        tag_to_confirm = Some((tag.clone(), video_count));
+                                    }
+                                });
+                            }
+                            
+                            if self.database.tags.is_empty() {
+                                ui.label("(No tags registered)");
+                            }
+                        });
+                    
+                    // Set confirmation if requested
+                    if let Some((tag, count)) = tag_to_confirm {
+                        self.tag_delete_confirm = Some((tag, count));
+                    }
+                });
+            
+            self.show_tag_management_window = window_open;
+        }
+        
+        // Tag Delete Confirmation Window
+        if self.tag_delete_confirm.is_some() {
+            let confirm_title = self.i18n.t("confirm_tag_delete_title");
+            let confirm_msg = self.i18n.t("confirm_tag_delete");
+            let cancel_text = self.i18n.t("cancel");
+            
+            let mut should_close = false;
+            let mut delete_tag = false;
+            
+            egui::Window::new(&confirm_title)
+                .collapsible(false)
+                .resizable(false)
+                .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+                .show(ctx, |ui| {
+                    if let Some((tag_name, video_count)) = &self.tag_delete_confirm {
+                        ui.label(format!("🏷 {}", tag_name));
+                        ui.separator();
+                        ui.label(&confirm_msg);
+                        
+                        if *video_count > 0 {
+                            ui.add_space(8.0);
+                            let videos_msg = self.i18n.t("tag_used_in_videos")
+                                .replace("{}", &video_count.to_string());
+                            ui.label(egui::RichText::new(videos_msg).color(egui::Color32::YELLOW));
+                            ui.label(self.i18n.t("tag_will_be_removed"));
+                        }
+                        
+                        ui.add_space(16.0);
+                        
+                        ui.horizontal(|ui| {
+                            if ui.button(egui::RichText::new("OK").color(egui::Color32::RED)).clicked() {
+                                delete_tag = true;
+                                should_close = true;
+                            }
+                            if ui.button(&cancel_text).clicked() {
+                                should_close = true;
+                            }
+                        });
+                    }
+                });
+            
+            // Process deletion after window is closed
+            if should_close {
+                if let Some((tag, _video_count)) = self.tag_delete_confirm.take() {
+                    if delete_tag {
+                        // Remove tag from tags list
+                        self.database.tags.retain(|t| t != &tag);
+                        
+                        // Remove tag from all videos
+                        for video in &mut self.database.videos {
+                            video.tags.retain(|t| t != &tag);
+                        }
+                        
+                        // Also remove from selected tag filter
+                        self.selected_tag_filter.remove(&tag);
+                        
+                        eprintln!("[tag_management] Removed tag '{}' from database and all videos", tag);
+                        
+                        self.save_settings();
+                        let _ = database::save_database(&self.database);
+                    }
+                }
+            }
         }
         
         // Folder Delete Confirmation Window

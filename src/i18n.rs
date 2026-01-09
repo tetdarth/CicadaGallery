@@ -181,6 +181,15 @@ impl I18n {
         self.add("no_shader", "No shader", "シェーダーなし", "无着色器");
         self.add("use_frame_interpolation", "Use frame interpolation (motion smoothing)", "フレーム補間を使用 (モーション補間)", "使用帧插值 (运动平滑)");
         
+        // Tag management
+        self.add("manage_tags", "Manage Tags...", "タグを管理...", "管理标签...");
+        self.add("tag_management", "Tag Management", "タグ管理", "标签管理");
+        self.add("registered_tags", "Registered Tags:", "登録されているタグ:", "已注册的标签:");
+        self.add("confirm_tag_delete_title", "Delete Tag", "タグを削除", "删除标签");
+        self.add("confirm_tag_delete", "Are you sure you want to remove this tag?", "このタグを削除してもよろしいですか？", "确定要删除此标签吗？");
+        self.add("tag_used_in_videos", "This tag is used in {} video(s).", "このタグは{}件の動画で使用されています。", "此标签在{}个视频中使用。");
+        self.add("tag_will_be_removed", "The tag will be removed from all videos.", "タグは全ての動画から削除されます。", "标签将从所有视频中删除。");
+        
         // Folder deletion
         self.add("confirm_folder_delete_title", "Delete Folder", "フォルダを削除", "删除文件夹");
         self.add("confirm_folder_delete", "Are you sure you want to remove this folder?", "このフォルダを削除してもよろしいですか？", "确定要删除此文件夹吗？");
