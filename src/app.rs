@@ -2040,8 +2040,24 @@ impl eframe::App for VideoPlayerApp {
             let selection_changed = selection_before != self.selected_video || 
                                    selections_before != self.selected_videos;
             
+            // Check if any popup, window, or context menu is open
+            let any_popup_open = self.show_options_window || 
+                                self.show_folder_management_window || 
+                                self.show_tag_management_window ||
+                                self.show_shader_management_window ||
+                                self.show_license_window ||
+                                self.show_premium_promotion_window ||
+                                self.show_tag_add_popup ||
+                                self.delete_confirm_video.is_some() ||
+                                self.folder_delete_confirm.is_some() ||
+                                self.tag_delete_confirm.is_some();
+            
+            // Also check if something is being interacted with (context menu, etc.)
+            let is_using_pointer = ctx.is_using_pointer();
+            
             // If clicked in this panel area and selection didn't change, clear selection
-            if left_clicked && !selection_changed {
+            // But skip if any popup/window is open or context menu is active
+            if left_clicked && !selection_changed && !any_popup_open && !is_using_pointer {
                 // User clicked somewhere but not on a thumbnail
                 // Check if click was in our panel area
                 let pointer_pos = ctx.input(|i| i.pointer.interact_pos());
