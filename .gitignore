@@ -8,6 +8,9 @@ mpv/
 ffmpeg/
 image/
 
+# Build documentation (private)
+BUILD.md
+
 # Premium module (not included in public repository)
 src/license_premium.rs
 src/bin/license_generator.rs
