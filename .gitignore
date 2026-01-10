@@ -7,6 +7,7 @@ cache/
 mpv/
 ffmpeg/
 image/
+dist/
 
 # Build documentation (private)
 BUILD.md
