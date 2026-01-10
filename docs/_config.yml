@@ -5,7 +5,7 @@ theme: jekyll-theme-cayman
 show_downloads: true
 
 # Repository info
-repository: tetdarth/cicadagallery
+repository: tetdarth/CicadaGallery
 
 # Base URL for GitHub Pages (docs folder)
 baseurl: ""
