@@ -159,6 +159,22 @@ impl VideoDatabase {
         self.videos.iter().any(|v| v.path == *path)
     }
     
+    /// Get a reference to a video by its path
+    pub fn get_video_by_path(&self, path: &std::path::PathBuf) -> Option<&VideoFile> {
+        // Try to canonicalize both paths for comparison
+        let canonical_path = path.canonicalize().ok();
+        
+        self.videos.iter().find(|v| {
+            if let Some(ref target) = canonical_path {
+                if let Ok(v_canonical) = v.path.canonicalize() {
+                    return v_canonical == *target;
+                }
+            }
+            // Fallback to direct comparison if canonicalization fails
+            v.path == *path
+        })
+    }
+    
     /// Get a mutable reference to a video by its path
     pub fn get_video_by_path_mut(&mut self, path: &std::path::PathBuf) -> Option<&mut VideoFile> {
         // Try to canonicalize both paths for comparison
@@ -279,6 +295,8 @@ pub struct AppSettings {
     pub watched_folders: Vec<std::path::PathBuf>, // Folders being watched for changes
     #[serde(default = "default_mpv_shortcuts_open")]
     pub mpv_shortcuts_open: bool, // MPV shortcuts panel open/collapsed state
+    #[serde(default)]
+    pub mpv_shortcuts_position: Option<(f32, f32)>, // MPV shortcuts panel position (x, y)
     #[serde(default = "default_mpv_volume")]
     pub mpv_volume: u8, // MPV volume (0-100)
     #[serde(default)]
@@ -302,7 +320,7 @@ fn default_mpv_volume() -> u8 {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            thumbnail_scale: 1.0,
+            thumbnail_scale: 1.25,
             mpv_always_on_top: true,
             show_full_filename: false,
             show_tags_in_grid: true,
@@ -315,6 +333,7 @@ impl Default for AppSettings {
             added_dates_updated: false,
             watched_folders: Vec::new(),
             mpv_shortcuts_open: true,
+            mpv_shortcuts_position: None,
             mpv_volume: 100,
             license_key: None,
             window_size: None,

@@ -1,4 +1,5 @@
 use crate::models::{SceneInfo, VideoFile};
+use crate::thumbnail::{get_ffmpeg_path, get_ffprobe_path};
 use std::path::Path;
 use std::process::Command;
 use std::sync::{Arc, Mutex};
@@ -21,7 +22,7 @@ pub fn detect_scenes(video: &mut VideoFile, cache_dir: &Path) -> Result<(), Box<
     
     // Use FFmpeg to detect scene changes and extract frames
     // This command detects scenes and outputs timestamps
-    let mut cmd = Command::new("ffmpeg");
+    let mut cmd = Command::new(get_ffmpeg_path());
     cmd.args(&[
             "-i", video.path.to_str().unwrap(),
             "-filter:v", "select='gt(scene,0.3)',showinfo",
@@ -137,6 +138,7 @@ fn generate_thumbnails_parallel(
     let video_path = video.path.clone();
     let scene_dir = scene_dir.to_path_buf();
     let scenes = Arc::new(Mutex::new(Vec::new()));
+    let ffmpeg_path = get_ffmpeg_path(); // Get path once before spawning threads
     
     // Split timestamps into chunks for each thread
     let chunk_size = (timestamps.len() + num_threads - 1) / num_threads;
@@ -147,6 +149,7 @@ fn generate_thumbnails_parallel(
         let video_path = video_path.clone();
         let scene_dir = scene_dir.clone();
         let scenes = Arc::clone(&scenes);
+        let ffmpeg_path = ffmpeg_path.clone();
         
         let handle = thread::spawn(move || {
             let mut local_scenes = Vec::new();
@@ -156,7 +159,7 @@ fn generate_thumbnails_parallel(
                 let thumbnail_path = scene_dir.join(format!("scene_{:03}.jpg", global_index));
                 
                 // Use optimized FFmpeg command: -ss before -i for fast seeking
-                let mut cmd = Command::new("ffmpeg");
+                let mut cmd = Command::new(&ffmpeg_path);
                 cmd.args(&[
                         "-ss", &timestamp.to_string(),  // Fast seek before input
                         "-i", video_path.to_str().unwrap(),
@@ -211,7 +214,7 @@ fn generate_thumbnails_parallel(
 
 /// Get video duration using FFprobe
 pub fn get_video_duration(video_path: &Path) -> Option<f64> {
-    let mut cmd = Command::new("ffprobe");
+    let mut cmd = Command::new(get_ffprobe_path());
     cmd.args(&[
             "-v", "error",
             "-show_entries", "format=duration",
@@ -235,7 +238,7 @@ pub fn get_video_duration(video_path: &Path) -> Option<f64> {
 
 /// Get video resolution (width, height) using FFprobe
 pub fn get_video_resolution(video_path: &Path) -> Option<(u32, u32)> {
-    let mut cmd = Command::new("ffprobe");
+    let mut cmd = Command::new(get_ffprobe_path());
     cmd.args(&[
             "-v", "error",
             "-select_streams", "v:0",

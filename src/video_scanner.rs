@@ -1,6 +1,9 @@
 use crate::models::VideoFile;
+use crate::thumbnail;
+use crate::scene_detection::{get_video_duration, get_video_resolution};
 use std::path::PathBuf;
 use walkdir::WalkDir;
+use rayon::prelude::*;
 
 /// Generate folder name from file path
 /// Uses the immediate parent directory name as the folder
@@ -15,7 +18,7 @@ pub fn generate_folder_from_path(path: &PathBuf) -> Option<String> {
     None
 }
 
-/// Scan video files from directory
+/// Scan video files from directory (file path collection only - fast)
 pub fn scan_directory(dir: PathBuf) -> Vec<VideoFile> {
     let mut videos = Vec::new();
     
@@ -44,3 +47,62 @@ pub fn scan_directory(dir: PathBuf) -> Vec<VideoFile> {
     videos
 }
 
+/// Process videos in parallel to generate thumbnails and metadata
+/// This is the slow part that benefits from parallelization
+pub fn process_videos_parallel(videos: Vec<VideoFile>, cache_dir: &PathBuf) -> Vec<VideoFile> {
+    let cache_dir = cache_dir.clone();
+    
+    videos.into_par_iter()
+        .map(|mut video| {
+            // Generate thumbnail
+            video.thumbnail_path = thumbnail::create_video_thumbnail(&video.path, &cache_dir);
+            
+            // Get video metadata using FFmpeg
+            video.duration = get_video_duration(&video.path);
+            video.resolution = get_video_resolution(&video.path);
+            
+            video
+        })
+        .collect()
+}
+
+/// Process videos in parallel with a limit (for free tier)
+pub fn process_videos_parallel_with_limit(
+    videos: Vec<VideoFile>, 
+    cache_dir: &PathBuf, 
+    max_count: usize
+) -> Vec<VideoFile> {
+    let cache_dir = cache_dir.clone();
+    let videos_to_process: Vec<_> = videos.into_iter().take(max_count).collect();
+    
+    videos_to_process.into_par_iter()
+        .map(|mut video| {
+            // Generate thumbnail
+            video.thumbnail_path = thumbnail::create_video_thumbnail(&video.path, &cache_dir);
+            
+            // Get video metadata using FFmpeg
+            video.duration = get_video_duration(&video.path);
+            video.resolution = get_video_resolution(&video.path);
+            
+            video
+        })
+        .collect()
+}
+
+/// Add a single file
+pub fn add_single_file(path: PathBuf) -> Option<VideoFile> {
+    if path.is_file() && VideoFile::is_video_file(&path) {
+        let mut video = VideoFile::new(path.clone());
+        
+        // Auto-generate folder from path
+        video.folder = generate_folder_from_path(&path);
+        
+        if let Ok(metadata) = std::fs::metadata(&path) {
+            video.file_size = metadata.len();
+        }
+        
+        Some(video)
+    } else {
+        None
+    }
+}

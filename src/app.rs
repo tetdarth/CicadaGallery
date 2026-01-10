@@ -12,7 +12,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 use notify::{Watcher, RecursiveMode, Event};
-use std::sync::mpsc::{channel, Receiver};
+use std::sync::mpsc::{channel, Receiver, Sender};
 use std::time::SystemTime;
 
 pub struct VideoPlayerApp {
@@ -22,6 +22,8 @@ pub struct VideoPlayerApp {
     pub search_query: String,
     pub selected_folder_filter: HashSet<String>, // Multiple folder selection (premium feature)
     pub selected_tag_filter: HashSet<String>, // Multiple tag selection (premium feature)
+    pub last_selected_folder: Option<usize>, // Last selected folder index for shift-click range selection
+    pub last_selected_tag: Option<usize>, // Last selected tag index for shift-click range selection
     pub tag_filter_mode: FilterMode, // AND or OR mode for tag filter (premium feature)
     pub min_rating_filter: u8, // 0 = show all, 1-5 = show videos with rating >= this value
     pub show_options_window: bool,
@@ -30,6 +32,7 @@ pub struct VideoPlayerApp {
     pub show_shader_management_window: bool, // Show shader management window
     pub show_mpv_shortcuts: bool, // Show mpv keyboard shortcuts panel
     pub mpv_shortcuts_open: bool, // MPV shortcuts panel open/collapsed state
+    pub mpv_shortcuts_pos: Option<egui::Pos2>, // MPV shortcuts panel position
     pub thumbnail_scale: f32, // 0.5 to 3.0 (50% to 300%)
     pub scene_panel_visible: bool, // Show/hide scene panel
     pub texture_cache: HashMap<PathBuf, egui::TextureHandle>,
@@ -70,6 +73,13 @@ pub struct VideoPlayerApp {
     pub tag_delete_confirm: Option<(String, usize)>, // (tag_name, video_count) pending deletion
     pub last_window_size: Option<(f32, f32)>, // Track last window size for saving on exit
     pub last_window_pos: Option<(f32, f32)>, // Track last window position
+    // Async thumbnail loading
+    pub pending_textures: HashSet<PathBuf>, // Textures currently being loaded
+    pub failed_textures: HashSet<PathBuf>, // Textures that failed to load (to avoid retrying)
+    pub texture_load_receiver: Option<Receiver<(PathBuf, Vec<u8>, [usize; 2])>>, // Receiver for loaded image data
+    pub texture_load_sender: Option<Sender<(PathBuf, Vec<u8>, [usize; 2])>>, // Sender for loaded image data
+    pub texture_fail_receiver: Option<Receiver<PathBuf>>, // Receiver for failed image paths
+    pub texture_fail_sender: Option<Sender<PathBuf>>, // Sender for failed image paths
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -160,6 +170,8 @@ impl Default for VideoPlayerApp {
             search_query: String::new(),
             selected_folder_filter: HashSet::new(),
             selected_tag_filter: HashSet::new(),
+            last_selected_folder: None,
+            last_selected_tag: None,
             tag_filter_mode: FilterMode::Or,
             min_rating_filter: 0,
             show_options_window: false,
@@ -168,6 +180,7 @@ impl Default for VideoPlayerApp {
             show_shader_management_window: false,
             show_mpv_shortcuts: true,
             mpv_shortcuts_open: settings.mpv_shortcuts_open,
+            mpv_shortcuts_pos: settings.mpv_shortcuts_position.map(|(x, y)| egui::Pos2::new(x, y)),
             thumbnail_scale: settings.thumbnail_scale,
             scene_panel_visible: true,
             texture_cache: HashMap::new(),
@@ -208,6 +221,13 @@ impl Default for VideoPlayerApp {
             tag_delete_confirm: None,
             last_window_size: None,
             last_window_pos: None,
+            // Async thumbnail loading
+            pending_textures: HashSet::new(),
+            failed_textures: HashSet::new(),
+            texture_load_receiver: None,
+            texture_load_sender: None,
+            texture_fail_receiver: None,
+            texture_fail_sender: None,
         }
     }
 }
@@ -283,6 +303,7 @@ impl VideoPlayerApp {
             added_dates_updated: true, // Keep as true to avoid re-updating
             watched_folders: self.watched_folders.iter().cloned().collect(),
             mpv_shortcuts_open: self.mpv_shortcuts_open,
+            mpv_shortcuts_position: self.mpv_shortcuts_pos.map(|p| (p.x, p.y)),
             mpv_volume: self.mpv_volume,
             license_key,
             window_size: self.last_window_size,
@@ -343,7 +364,7 @@ impl VideoPlayerApp {
         
         if let Some(folder) = FileDialog::new().pick_folder() {
             let cache_dir = thumbnail::get_cache_dir();
-            let mut videos = video_scanner::scan_directory(folder.clone());
+            let videos = video_scanner::scan_directory(folder.clone());
             
             eprintln!("[add_folder] Scanned {} videos from folder: {:?}", videos.len(), folder);
             eprintln!("[add_folder] Current database has {} videos", self.database.videos.len());
@@ -364,39 +385,53 @@ impl VideoPlayerApp {
             
             eprintln!("[add_folder] Built index of {} existing canonical paths", existing_paths.len());
             
-            for video in videos.iter_mut() {
-                // Canonicalize the scanned video path for comparison
-                let canonical_path = match video.path.canonicalize() {
-                    Ok(p) => p,
-                    Err(e) => {
-                        eprintln!("[add_folder] Failed to canonicalize path {:?}: {}", video.path, e);
-                        continue;
+            // Filter out existing videos
+            let new_videos: Vec<_> = videos.into_iter()
+                .filter(|video| {
+                    match video.path.canonicalize() {
+                        Ok(canonical_path) => {
+                            if existing_paths.contains(&canonical_path) {
+                                eprintln!("[add_folder] Skipping existing video: {:?}", video.path);
+                                false
+                            } else {
+                                true
+                            }
+                        }
+                        Err(e) => {
+                            eprintln!("[add_folder] Failed to canonicalize path {:?}: {}", video.path, e);
+                            false
+                        }
                     }
-                };
-                
-                // Skip if video already exists in database
-                if existing_paths.contains(&canonical_path) {
-                    eprintln!("[add_folder] Skipping existing video: {:?}", video.path);
-                    continue;
-                }
-                
-                // Check limit for free tier
-                if !self.is_premium && self.database.videos.len() >= 100 {
-                    eprintln!("[Free tier] Video limit reached. Skipping remaining videos in folder.");
+                })
+                .collect();
+            
+            eprintln!("[add_folder] Found {} new videos to process", new_videos.len());
+            
+            // Apply free tier limit and process videos in parallel
+            let current_count = self.database.videos.len();
+            let processed_videos = if self.is_premium {
+                // Premium: process all videos in parallel
+                video_scanner::process_videos_parallel(new_videos, &cache_dir)
+            } else {
+                // Free tier: limit to 100 total videos
+                let remaining_slots = 100_usize.saturating_sub(current_count);
+                if remaining_slots == 0 {
+                    eprintln!("[Free tier] Video limit reached. Cannot add more videos.");
                     self.show_premium_promotion_window = true;
-                    break;
+                    Vec::new()
+                } else {
+                    if new_videos.len() > remaining_slots {
+                        eprintln!("[Free tier] Limiting to {} videos (slots remaining)", remaining_slots);
+                        self.show_premium_promotion_window = true;
+                    }
+                    video_scanner::process_videos_parallel_with_limit(new_videos, &cache_dir, remaining_slots)
                 }
-                
+            };
+            
+            // Add processed videos to database
+            for video in processed_videos {
                 eprintln!("[add_folder] Adding new video: {:?}", video.path);
-                
-                // Generate thumbnail
-                video.thumbnail_path = thumbnail::create_video_thumbnail(&video.path, &cache_dir);
-                
-                // Get video metadata using FFmpeg
-                video.duration = get_video_duration(&video.path);
-                video.resolution = get_video_resolution(&video.path);
-                
-                self.database.add_video(video.clone());
+                self.database.add_video(video);
             }
             
             // Add folder to watched folders
@@ -458,9 +493,11 @@ impl VideoPlayerApp {
             
             let scanned_videos = video_scanner::scan_directory(folder_path.clone());
             
-            // Add new videos
-            for mut video in scanned_videos {
-                // Canonicalize the scanned video path for comparison
+            // Separate new videos and existing videos that need updates
+            let mut new_videos: Vec<_> = Vec::new();
+            let mut videos_needing_update: Vec<PathBuf> = Vec::new();
+            
+            for video in scanned_videos {
                 let canonical_path = match video.path.canonicalize() {
                     Ok(p) => p,
                     Err(e) => {
@@ -471,42 +508,68 @@ impl VideoPlayerApp {
                 
                 if !existing_paths.contains(&canonical_path) {
                     eprintln!("[rescan] Found new video: {:?}", video.path);
-                    // Generate thumbnail for new video
-                    video.thumbnail_path = thumbnail::create_video_thumbnail(&video.path, &cache_dir);
-                    
-                    // Get video metadata using FFmpeg
-                    video.duration = get_video_duration(&video.path);
-                    video.resolution = get_video_resolution(&video.path);
-                    
-                    self.database.add_video(video);
-                } else if let Some(existing_video) = self.database.get_video_by_path_mut(&video.path) {
-                    // Check if file was modified (by comparing file size and modification time)
-                    if let Ok(metadata) = std::fs::metadata(&video.path) {
+                    new_videos.push(video);
+                } else {
+                    // Check if existing video needs metadata update
+                    if let Some(existing_video) = self.database.get_video_by_path(&video.path) {
+                        let needs_update = existing_video.duration.is_none() 
+                            || existing_video.resolution.is_none()
+                            || existing_video.thumbnail_path.is_none();
+                        
+                        // Check for file size change
+                        let size_changed = if let Ok(metadata) = std::fs::metadata(&video.path) {
+                            existing_video.file_size != metadata.len()
+                        } else {
+                            false
+                        };
+                        
+                        if needs_update || size_changed {
+                            videos_needing_update.push(video.path.clone());
+                        }
+                    }
+                }
+            }
+            
+            eprintln!("[rescan] Found {} new videos to process in parallel", new_videos.len());
+            
+            // Process new videos in parallel
+            let processed_new_videos = video_scanner::process_videos_parallel(new_videos, &cache_dir);
+            
+            // Add new videos to database
+            for video in processed_new_videos {
+                self.database.add_video(video);
+            }
+            
+            // Update existing videos that need metadata (this is typically fewer, so less critical)
+            for video_path in videos_needing_update {
+                if let Some(existing_video) = self.database.get_video_by_path_mut(&video_path) {
+                    // Check if file was modified (by comparing file size)
+                    if let Ok(metadata) = std::fs::metadata(&video_path) {
                         let file_size = metadata.len();
                         if existing_video.file_size != file_size {
-                            eprintln!("[rescan] File size changed for: {:?}", video.path);
+                            eprintln!("[rescan] File size changed for: {:?}", video_path);
                             // Update file size
                             existing_video.file_size = file_size;
                             
                             // Regenerate thumbnail
-                            existing_video.thumbnail_path = thumbnail::create_video_thumbnail(&video.path, &cache_dir);
+                            existing_video.thumbnail_path = thumbnail::create_video_thumbnail(&video_path, &cache_dir);
                             
                             // Update metadata
-                            existing_video.duration = get_video_duration(&video.path);
-                            existing_video.resolution = get_video_resolution(&video.path);
+                            existing_video.duration = get_video_duration(&video_path);
+                            existing_video.resolution = get_video_resolution(&video_path);
                         }
                     }
                     
                     // Update missing metadata
                     if existing_video.duration.is_none() {
-                        existing_video.duration = get_video_duration(&video.path);
+                        existing_video.duration = get_video_duration(&video_path);
                     }
                     if existing_video.resolution.is_none() {
-                        existing_video.resolution = get_video_resolution(&video.path);
+                        existing_video.resolution = get_video_resolution(&video_path);
                     }
                     // Update missing thumbnail
                     if existing_video.thumbnail_path.is_none() {
-                        existing_video.thumbnail_path = thumbnail::create_video_thumbnail(&video.path, &cache_dir);
+                        existing_video.thumbnail_path = thumbnail::create_video_thumbnail(&video_path, &cache_dir);
                     }
                 }
             }
@@ -574,8 +637,8 @@ impl VideoPlayerApp {
     
     pub fn generate_scenes(&mut self, video_id: &str) {
         if let Some(video) = self.database.get_video_mut(video_id) {
-            let cache_dir = std::path::Path::new("cache");
-            let _ = scene_detection::detect_scenes(video, cache_dir);
+            let cache_dir = thumbnail::get_cache_dir();
+            let _ = scene_detection::detect_scenes(video, &cache_dir);
             let _ = database::save_database(&self.database);
         }
     }
@@ -702,6 +765,7 @@ impl VideoPlayerApp {
     
     pub fn clear_selection(&mut self) {
         self.selected_videos.clear();
+        self.selected_video = None;
         self.last_selected_video = None;
     }
     
@@ -807,34 +871,121 @@ impl VideoPlayerApp {
         }
     }
     
+    /// Initialize the async texture loading channel if not already done
+    fn ensure_texture_loader(&mut self) {
+        if self.texture_load_sender.is_none() {
+            let (tx, rx) = channel();
+            self.texture_load_sender = Some(tx);
+            self.texture_load_receiver = Some(rx);
+        }
+        if self.texture_fail_sender.is_none() {
+            let (tx, rx) = channel();
+            self.texture_fail_sender = Some(tx);
+            self.texture_fail_receiver = Some(rx);
+        }
+    }
+    
+    /// Process any completed texture loads from background threads
+    fn process_loaded_textures(&mut self, ctx: &egui::Context) {
+        // Process successful loads
+        if let Some(ref receiver) = self.texture_load_receiver {
+            // Process up to 10 textures per frame to avoid blocking
+            for _ in 0..10 {
+                match receiver.try_recv() {
+                    Ok((path, pixels, size)) => {
+                        // Remove from pending set
+                        self.pending_textures.remove(&path);
+                        
+                        // Create texture from received data
+                        let color_image = egui::ColorImage::from_rgba_unmultiplied(size, &pixels);
+                        let texture = ctx.load_texture(
+                            path.to_string_lossy().to_string(),
+                            color_image,
+                            Default::default(),
+                        );
+                        self.texture_cache.insert(path, texture);
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        // Channel disconnected, recreate it
+                        self.texture_load_sender = None;
+                        self.texture_load_receiver = None;
+                        self.pending_textures.clear();
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Process failed loads
+        if let Some(ref receiver) = self.texture_fail_receiver {
+            for _ in 0..10 {
+                match receiver.try_recv() {
+                    Ok(path) => {
+                        // Remove from pending and add to failed
+                        self.pending_textures.remove(&path);
+                        self.failed_textures.insert(path);
+                    }
+                    Err(std::sync::mpsc::TryRecvError::Empty) => break,
+                    Err(std::sync::mpsc::TryRecvError::Disconnected) => {
+                        self.texture_fail_sender = None;
+                        self.texture_fail_receiver = None;
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
     fn load_image_texture(&mut self, ctx: &egui::Context, image_path: &PathBuf) -> Option<egui::TextureHandle> {
         // Check if already cached - this is fast
         if let Some(texture) = self.texture_cache.get(image_path) {
             return Some(texture.clone());
         }
         
-        // Load image from file - optimized for JPEGs which are commonly used for thumbnails
-        let image_data = image::ImageReader::open(image_path)
-            .ok()
-            .and_then(|reader| reader.decode().ok())?;
+        // Check if already failed (don't retry failed images)
+        if self.failed_textures.contains(image_path) {
+            return None;
+        }
         
-        let size = [image_data.width() as usize, image_data.height() as usize];
-        let image_buffer = image_data.to_rgba8();
-        let pixels = image_buffer.as_flat_samples();
+        // Check if already loading
+        if self.pending_textures.contains(image_path) {
+            return None; // Still loading, return None to show placeholder
+        }
         
-        let color_image = egui::ColorImage::from_rgba_unmultiplied(
-            size,
-            pixels.as_slice(),
-        );
+        // Limit concurrent loading threads to prevent resource exhaustion
+        const MAX_CONCURRENT_LOADS: usize = 8;
+        if self.pending_textures.len() >= MAX_CONCURRENT_LOADS {
+            return None; // Too many pending loads, wait for some to complete
+        }
         
-        let texture = ctx.load_texture(
-            image_path.to_string_lossy().to_string(),
-            color_image,
-            Default::default(),
-        );
+        // Ensure loader is initialized
+        self.ensure_texture_loader();
         
-        self.texture_cache.insert(image_path.clone(), texture.clone());
-        Some(texture)
+        // Start async loading
+        if let (Some(ref success_sender), Some(ref fail_sender)) = (&self.texture_load_sender, &self.texture_fail_sender) {
+            let path = image_path.clone();
+            let success_tx = success_sender.clone();
+            let fail_tx = fail_sender.clone();
+            let ctx_clone = ctx.clone();
+            
+            // Mark as pending
+            self.pending_textures.insert(path.clone());
+            
+            // Spawn background thread to load image
+            std::thread::spawn(move || {
+                if let Some((pixels, size)) = load_image_data(&path) {
+                    let _ = success_tx.send((path, pixels, size));
+                } else {
+                    // Send failure notification
+                    let _ = fail_tx.send(path);
+                }
+                // Request repaint so the UI updates when texture is ready
+                ctx_clone.request_repaint();
+            });
+        }
+        
+        None // Return None while loading, caller should show placeholder
     }
     
     fn draw_thumbnail_placeholder(&mut self, ui: &mut egui::Ui, _ctx: &egui::Context, thumbnail_size: egui::Vec2, video: &VideoFile) {
@@ -869,9 +1020,19 @@ impl VideoPlayerApp {
                 // Shift+Click: range selection (need video_ids context)
                 self.selected_videos.insert(video.id.clone());
                 self.last_selected_video = Some(video.id.clone());
+                // Show profile of first selected video
+                if self.selected_video.is_none() {
+                    self.selected_video = Some(video.id.clone());
+                    self.scene_panel_visible = true;
+                }
             } else if modifiers.ctrl {
                 self.toggle_video_selection(&video.id);
                 self.last_selected_video = Some(video.id.clone());
+                // Show profile of first selected video
+                if self.selected_video.is_none() && self.selected_videos.contains(&video.id) {
+                    self.selected_video = Some(video.id.clone());
+                    self.scene_panel_visible = true;
+                }
             } else {
                 // Single click: clear multi-select and select only this video
                 self.selected_videos.clear();
@@ -1030,6 +1191,9 @@ impl VideoPlayerApp {
 
 impl eframe::App for VideoPlayerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Process any completed texture loads from background threads
+        self.process_loaded_textures(ctx);
+        
         // Track window size and position for saving on exit
         ctx.input(|i| {
             if let Some(rect) = i.viewport().inner_rect {
@@ -1213,26 +1377,47 @@ impl eframe::App for VideoPlayerApp {
             ui.label(&self.i18n.t("folders"));
             if ui.button(&self.i18n.t("all")).clicked() {
                 self.selected_folder_filter.clear();
+                self.last_selected_folder = None;
             }
+            let folders_clone = self.database.folders.clone();
             egui::ScrollArea::vertical()
                 .id_salt("folder_filter_scroll")
                 .max_height(300.0)
                 .show(ui, |ui| {
-                    for folder in &self.database.folders.clone() {
+                    for (idx, folder) in folders_clone.iter().enumerate() {
                         let is_selected = self.selected_folder_filter.contains(folder);
-                        if self.is_premium {
-                            // Premium: Multiple selection with checkboxes
-                            let mut selected = is_selected;
-                            if ui.checkbox(&mut selected, folder).changed() {
-                                if selected {
-                                    self.selected_folder_filter.insert(folder.clone());
+                        let response = ui.selectable_label(is_selected, folder);
+                        
+                        if response.clicked() {
+                            let modifiers = ui.input(|i| i.modifiers);
+                            
+                            if self.is_premium {
+                                // Premium: Ctrl+Click for multiple selection, Shift+Click for range selection
+                                if modifiers.shift && self.last_selected_folder.is_some() {
+                                    // Shift+Click: Range selection
+                                    let last_idx = self.last_selected_folder.unwrap();
+                                    let (start, end) = if idx < last_idx { (idx, last_idx) } else { (last_idx, idx) };
+                                    for i in start..=end {
+                                        if let Some(f) = folders_clone.get(i) {
+                                            self.selected_folder_filter.insert(f.clone());
+                                        }
+                                    }
+                                } else if modifiers.ctrl || modifiers.command {
+                                    // Ctrl+Click: Toggle selection
+                                    if is_selected {
+                                        self.selected_folder_filter.remove(folder);
+                                    } else {
+                                        self.selected_folder_filter.insert(folder.clone());
+                                    }
+                                    self.last_selected_folder = Some(idx);
                                 } else {
-                                    self.selected_folder_filter.remove(folder);
+                                    // Normal click: Single selection (clear others)
+                                    self.selected_folder_filter.clear();
+                                    self.selected_folder_filter.insert(folder.clone());
+                                    self.last_selected_folder = Some(idx);
                                 }
-                            }
-                        } else {
-                            // Free: Single selection only
-                            if ui.selectable_label(is_selected, folder).clicked() {
+                            } else {
+                                // Free: Single selection only
                                 self.selected_folder_filter.clear();
                                 self.selected_folder_filter.insert(folder.clone());
                             }
@@ -1247,6 +1432,7 @@ impl eframe::App for VideoPlayerApp {
             ui.horizontal(|ui| {
                 if ui.button(&self.i18n.t("all")).clicked() {
                     self.selected_tag_filter.clear();
+                    self.last_selected_tag = None;
                 }
                 // AND/OR toggle (only show when premium and multiple tags selected)
                 if self.is_premium && self.selected_tag_filter.len() > 1 {
@@ -1259,25 +1445,45 @@ impl eframe::App for VideoPlayerApp {
                     }
                 }
             });
+            let tags_clone = self.database.tags.clone();
             egui::ScrollArea::vertical()
                 .id_salt("tag_filter_scroll")
                 .max_height(300.0)
                 .show(ui, |ui| {
-                    for tag in &self.database.tags.clone() {
+                    for (idx, tag) in tags_clone.iter().enumerate() {
                         let is_selected = self.selected_tag_filter.contains(tag);
-                        if self.is_premium {
-                            // Premium: Multiple selection with checkboxes
-                            let mut selected = is_selected;
-                            if ui.checkbox(&mut selected, tag).changed() {
-                                if selected {
-                                    self.selected_tag_filter.insert(tag.clone());
+                        let response = ui.selectable_label(is_selected, tag);
+                        
+                        if response.clicked() {
+                            let modifiers = ui.input(|i| i.modifiers);
+                            
+                            if self.is_premium {
+                                // Premium: Ctrl+Click for multiple selection, Shift+Click for range selection
+                                if modifiers.shift && self.last_selected_tag.is_some() {
+                                    // Shift+Click: Range selection
+                                    let last_idx = self.last_selected_tag.unwrap();
+                                    let (start, end) = if idx < last_idx { (idx, last_idx) } else { (last_idx, idx) };
+                                    for i in start..=end {
+                                        if let Some(t) = tags_clone.get(i) {
+                                            self.selected_tag_filter.insert(t.clone());
+                                        }
+                                    }
+                                } else if modifiers.ctrl || modifiers.command {
+                                    // Ctrl+Click: Toggle selection
+                                    if is_selected {
+                                        self.selected_tag_filter.remove(tag);
+                                    } else {
+                                        self.selected_tag_filter.insert(tag.clone());
+                                    }
+                                    self.last_selected_tag = Some(idx);
                                 } else {
-                                    self.selected_tag_filter.remove(tag);
+                                    // Normal click: Single selection (clear others)
+                                    self.selected_tag_filter.clear();
+                                    self.selected_tag_filter.insert(tag.clone());
+                                    self.last_selected_tag = Some(idx);
                                 }
-                            }
-                        } else {
-                            // Free: Single selection only
-                            if ui.selectable_label(is_selected, tag).clicked() {
+                            } else {
+                                // Free: Single selection only
                                 self.selected_tag_filter.clear();
                                 self.selected_tag_filter.insert(tag.clone());
                             }
@@ -1816,12 +2022,39 @@ impl eframe::App for VideoPlayerApp {
                 .cloned()
                 .collect();
             
+            // Remember the selection state BEFORE drawing UI
+            let selection_before = self.selected_video.clone();
+            let selections_before = self.selected_videos.clone();
+            
+            // Create a scrollable area for content
             egui::ScrollArea::vertical().show(ui, |ui| {
                 match current_view {
                     ViewMode::Grid => self.show_grid_view(ui, ctx, &videos_to_show),
                     ViewMode::List => self.show_list_view(ui, &videos_to_show),
                 }
             });
+            
+            // Check for background click: if mouse was clicked but selection didn't change,
+            // it means user clicked on empty area
+            let left_clicked = ctx.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary));
+            let selection_changed = selection_before != self.selected_video || 
+                                   selections_before != self.selected_videos;
+            
+            // If clicked in this panel area and selection didn't change, clear selection
+            if left_clicked && !selection_changed {
+                // User clicked somewhere but not on a thumbnail
+                // Check if click was in our panel area
+                let pointer_pos = ctx.input(|i| i.pointer.interact_pos());
+                if let Some(pos) = pointer_pos {
+                    let panel_rect = ui.min_rect();
+                    if panel_rect.contains(pos) {
+                        // Clicked in our panel but not on any thumbnail
+                        if self.selected_video.is_some() || !self.selected_videos.is_empty() {
+                            self.clear_selection();
+                        }
+                    }
+                }
+            }
         });
         
         // Options window
@@ -2383,13 +2616,17 @@ impl eframe::App for VideoPlayerApp {
             let mut window_open = self.mpv_shortcuts_open;
             let window_was_open = window_open;
             
-            egui::Window::new("MPV Shortcuts")
-                .anchor(egui::Align2::LEFT_BOTTOM, egui::vec2(10.0, -10.0))
+            // Use saved position or default to bottom-left
+            let default_pos = egui::pos2(10.0, ctx.screen_rect().max.y - 280.0);
+            let initial_pos = self.mpv_shortcuts_pos.unwrap_or(default_pos);
+            
+            let response = egui::Window::new("MPV Shortcuts")
+                .default_pos(initial_pos)
                 .resizable(false)
                 .collapsible(true)
                 .open(&mut window_open)
                 .show(ctx, |ui| {
-                    ui.set_width(250.0);
+                    ui.set_width(180.0);
                     
                     ui.label(egui::RichText::new("⌨ Keyboard Shortcuts").strong());
                     ui.separator();
@@ -2439,6 +2676,16 @@ impl eframe::App for VideoPlayerApp {
                         ui.label("Quit Player");
                     });
                 });
+            
+            // Track window position after drag
+            if let Some(inner_response) = response {
+                let new_pos = inner_response.response.rect.min;
+                let pos_changed = self.mpv_shortcuts_pos.map(|p| (p.x - new_pos.x).abs() > 1.0 || (p.y - new_pos.y).abs() > 1.0).unwrap_or(true);
+                if pos_changed {
+                    self.mpv_shortcuts_pos = Some(new_pos);
+                    self.save_settings();
+                }
+            }
             
             // Save state if changed
             if window_open != window_was_open {
@@ -2694,10 +2941,20 @@ impl VideoPlayerApp {
                                         self.selected_videos.insert(video.id.clone());
                                     }
                                     self.last_selected_video = Some(video.id.clone());
+                                    // Show profile of first selected video
+                                    if self.selected_video.is_none() {
+                                        self.selected_video = Some(video.id.clone());
+                                        self.scene_panel_visible = true;
+                                    }
                                 } else if modifiers.ctrl {
                                     // Ctrl+Click: toggle selection
                                     self.toggle_video_selection(&video.id);
                                     self.last_selected_video = Some(video.id.clone());
+                                    // Show profile of first selected video
+                                    if self.selected_video.is_none() && self.selected_videos.contains(&video.id) {
+                                        self.selected_video = Some(video.id.clone());
+                                        self.scene_panel_visible = true;
+                                    }
                                 } else {
                                     // Single click: clear multi-select and select only this video
                                     self.selected_videos.clear();
@@ -2815,9 +3072,19 @@ impl VideoPlayerApp {
                             self.selected_videos.insert(video.id.clone());
                         }
                         self.last_selected_video = Some(video.id.clone());
+                        // Show profile of first selected video
+                        if self.selected_video.is_none() {
+                            self.selected_video = Some(video.id.clone());
+                            self.scene_panel_visible = true;
+                        }
                     } else if modifiers.ctrl {
                         self.toggle_video_selection(&video.id);
                         self.last_selected_video = Some(video.id.clone());
+                        // Show profile of first selected video
+                        if self.selected_video.is_none() && self.selected_videos.contains(&video.id) {
+                            self.selected_video = Some(video.id.clone());
+                            self.scene_panel_visible = true;
+                        }
                     } else {
                         // Single click: clear multi-select and select only this video
                         self.selected_videos.clear();
@@ -2877,4 +3144,18 @@ impl VideoPlayerApp {
             ui.separator();
         }
     }
+}
+
+/// Load image data from file in a format suitable for creating a texture
+/// Returns (rgba_pixels, [width, height]) or None if loading fails
+fn load_image_data(image_path: &PathBuf) -> Option<(Vec<u8>, [usize; 2])> {
+    let image_data = image::ImageReader::open(image_path)
+        .ok()
+        .and_then(|reader| reader.decode().ok())?;
+    
+    let size = [image_data.width() as usize, image_data.height() as usize];
+    let image_buffer = image_data.to_rgba8();
+    let pixels = image_buffer.into_raw();
+    
+    Some((pixels, size))
 }
