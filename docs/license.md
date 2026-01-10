@@ -218,7 +218,7 @@ async function submitForm() {
     const response = await fetch(`${WORKER_URL}/issue-license`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ order_id: orderId, email: email }),
+      body: JSON.stringify({ order_id: orderId, email: email, lang: 'ja' }),
     });
     
     const data = await response.json();
