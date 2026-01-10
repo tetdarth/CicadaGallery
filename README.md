@@ -2,7 +2,7 @@
 
 Rust製の動画管理・再生アプリケーションです。MPVプレイヤーを使用して高品質な動画再生を実現します。
 
-📖 **ドキュメント**: [https://tetdarth.github.io/cicadagallery/](https://tetdarth.github.io/cicadagallery/)
+📖 **ドキュメント**: [https://tetdarth.github.io/CicadaGallery/](https://tetdarth.github.io/CicadaGallery/)
 
 ## 機能
 

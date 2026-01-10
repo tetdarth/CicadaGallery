@@ -79,6 +79,7 @@ pub struct VideoPlayerApp {
     pub texture_load_sender: Option<Sender<(PathBuf, Vec<u8>, [usize; 2])>>, // Sender for loaded image data
     pub texture_fail_receiver: Option<Receiver<PathBuf>>, // Receiver for failed image paths
     pub texture_fail_sender: Option<Sender<PathBuf>>, // Sender for failed image paths
+    pub thumbnail_clicked_this_frame: bool, // Flag to track if a thumbnail was clicked this frame
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -226,6 +227,7 @@ impl Default for VideoPlayerApp {
             texture_load_sender: None,
             texture_fail_receiver: None,
             texture_fail_sender: None,
+            thumbnail_clicked_this_frame: false,
         }
     }
 }
@@ -1164,6 +1166,7 @@ impl VideoPlayerApp {
         }
         
         if response.clicked() {
+            self.thumbnail_clicked_this_frame = true;
             let modifiers = ui.input(|i| i.modifiers.clone());
             if modifiers.shift {
                 // Shift+Click: range selection (need video_ids context)
@@ -1184,15 +1187,26 @@ impl VideoPlayerApp {
                 }
             } else {
                 // Single click: clear multi-select and select only this video
-                self.selected_videos.clear();
-                self.selected_video = Some(video.id.clone());
-                self.scene_panel_visible = true;
-                self.last_selected_video = Some(video.id.clone());
+                // If this video is already the only selected one, keep it selected
+                let already_sole_selected = self.selected_video.as_ref() == Some(&video.id) && 
+                                           self.selected_videos.is_empty();
+                if !already_sole_selected {
+                    self.selected_videos.clear();
+                    self.selected_video = Some(video.id.clone());
+                    self.scene_panel_visible = true;
+                    self.last_selected_video = Some(video.id.clone());
+                }
             }
         }
         
         // Double click: play video
         if response.double_clicked() {
+            // Select this video before playing (maintain selection in profile panel)
+            self.selected_videos.clear();
+            self.selected_video = Some(video.id.clone());
+            self.scene_panel_visible = true;
+            self.last_selected_video = Some(video.id.clone());
+            
             let selected_shader = self.selected_shader.as_deref();
             let use_gpu_hq = self.is_premium && self.use_gpu_hq;
             let use_custom_shaders = self.is_premium && self.use_custom_shaders;
@@ -1339,6 +1353,9 @@ impl VideoPlayerApp {
 
 impl eframe::App for VideoPlayerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Reset per-frame flags
+        self.thumbnail_clicked_this_frame = false;
+        
         // Handle dropped files (drag & drop)
         let dropped_files: Vec<egui::DroppedFile> = ctx.input(|i| i.raw.dropped_files.clone());
         if !dropped_files.is_empty() {
@@ -2256,8 +2273,9 @@ impl eframe::App for VideoPlayerApp {
             let is_using_pointer = ctx.is_using_pointer();
             
             // If clicked in this panel area and selection didn't change, clear selection
-            // But skip if any popup/window is open, context menu is active, or double-clicked (playing video)
-            if left_clicked && !double_clicked && !selection_changed && !any_popup_open && !is_using_pointer {
+            // But skip if any popup/window is open, context menu is active, double-clicked (playing video),
+            // or a thumbnail was clicked (even if selection didn't change)
+            if left_clicked && !double_clicked && !selection_changed && !any_popup_open && !is_using_pointer && !self.thumbnail_clicked_this_frame {
                 // User clicked somewhere but not on a thumbnail
                 // Check if click was in our panel area
                 let pointer_pos = ctx.input(|i| i.pointer.interact_pos());
@@ -3217,6 +3235,7 @@ impl VideoPlayerApp {
                             
                             // Handle click events (always handle regardless of visibility)
                             if response.clicked() {
+                                self.thumbnail_clicked_this_frame = true;
                                 let modifiers = ui.input(|i| i.modifiers.clone());
                                 if modifiers.shift {
                                     // Shift+Click: range selection
@@ -3243,15 +3262,26 @@ impl VideoPlayerApp {
                                     }
                                 } else {
                                     // Single click: clear multi-select and select only this video
-                                    self.selected_videos.clear();
-                                    self.selected_video = Some(video.id.clone());
-                                    self.scene_panel_visible = true;
-                                    self.last_selected_video = Some(video.id.clone());
+                                    // If this video is already the only selected one, keep it selected
+                                    let already_sole_selected = self.selected_video.as_ref() == Some(&video.id) && 
+                                                               self.selected_videos.is_empty();
+                                    if !already_sole_selected {
+                                        self.selected_videos.clear();
+                                        self.selected_video = Some(video.id.clone());
+                                        self.scene_panel_visible = true;
+                                        self.last_selected_video = Some(video.id.clone());
+                                    }
                                 }
                             }
                             
                             // Double click: play video
                             if response.double_clicked() {
+                                // Select this video before playing (maintain selection in profile panel)
+                                self.selected_videos.clear();
+                                self.selected_video = Some(video.id.clone());
+                                self.scene_panel_visible = true;
+                                self.last_selected_video = Some(video.id.clone());
+                                
                                 let selected_shader = self.selected_shader.as_deref();
                                 let use_gpu_hq = self.is_premium && self.use_gpu_hq;
                                 let use_custom_shaders = self.is_premium && self.use_custom_shaders;
@@ -3346,6 +3376,7 @@ impl VideoPlayerApp {
                 // Title with selection highlight
                 let title_response = ui.selectable_label(is_selected, &video.title);
                 if title_response.clicked() {
+                    self.thumbnail_clicked_this_frame = true;
                     let modifiers = ui.input(|i| i.modifiers.clone());
                     if modifiers.shift {
                         // Shift+Click: range selection
@@ -3371,15 +3402,26 @@ impl VideoPlayerApp {
                         }
                     } else {
                         // Single click: clear multi-select and select only this video
-                        self.selected_videos.clear();
-                        self.selected_video = Some(video.id.clone());
-                        self.scene_panel_visible = true;
-                        self.last_selected_video = Some(video.id.clone());
+                        // If this video is already the only selected one, keep it selected
+                        let already_sole_selected = self.selected_video.as_ref() == Some(&video.id) && 
+                                                   self.selected_videos.is_empty();
+                        if !already_sole_selected {
+                            self.selected_videos.clear();
+                            self.selected_video = Some(video.id.clone());
+                            self.scene_panel_visible = true;
+                            self.last_selected_video = Some(video.id.clone());
+                        }
                     }
                 }
                 
                 // Double click: play video
                 if title_response.double_clicked() {
+                    // Select this video before playing (maintain selection in profile panel)
+                    self.selected_videos.clear();
+                    self.selected_video = Some(video.id.clone());
+                    self.scene_panel_visible = true;
+                    self.last_selected_video = Some(video.id.clone());
+                    
                     let selected_shader = self.selected_shader.as_deref();
                     let use_gpu_hq = self.is_premium && self.use_gpu_hq;
                     let use_custom_shaders = self.is_premium && self.use_custom_shaders;
