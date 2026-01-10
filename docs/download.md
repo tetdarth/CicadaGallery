@@ -1,7 +1,10 @@
 ---
 layout: default
 title: ダウンロード
+lang: ja
 ---
+
+**🇯🇵 日本語** | [🇺🇸 English](en/download.md)
 
 # ダウンロード
 
@@ -11,7 +14,7 @@ title: ダウンロード
 
 | プラットフォーム | ダウンロード |
 |------------------|--------------|
-| Windows (64-bit) | [cicadagallery-windows-x64.zip](#) |
+| Windows (64-bit) | [cicadagallery-windows-x64.zip](https://github.com/tetdarth/CicadaGallery/releases/download/v0.1.0/cicadagallery-windows-x64.zip) |
 
 ---
 
@@ -55,18 +58,24 @@ title: ダウンロード
 
 ### 価格
 
-- **個人ライセンス**: $15（買い切り）
-- **商用ライセンス**: お問い合わせください
+- **個人ライセンス**：$15（買い切り）
+- **商用ライセンス**：お問い合わせください
 
 ### 購入方法
 
-*（購入方法の詳細をここに記載）*
+**プレミアムライセンスは Gumroad を通じて販売しています。**
+
+1. [Gumroadの商品ページ](https://6953876869541.gumroad.com/l/jmjty)からプレミアムライセンスを購入します  
+2. 購入完了後、Gumroad から届くメールに記載されている **Order ID** をコピーします  
+3. [ライセンス発行ページ](https://tetdarth.github.io/CicadaGallery/license)で  
+   Order ID と購入時のメールアドレスを入力します  
+4. **cicadagallery.app** からライセンスキーがメールで送信されます  
 
 ### ライセンスの有効化
 
-1. アプリケーションを起動
-2. オプション → Premium License セクションを開く
-3. ライセンスキーを入力して「Activate」をクリック
+1. アプリケーションを起動します  
+2. **Options → Premium License** を開きます  
+3. ライセンスキーを入力し、「Activate」をクリックします  
 
 ---
 
@@ -74,7 +83,7 @@ title: ダウンロード
 
 | バージョン | リリース日 | ダウンロード |
 |------------|------------|--------------|
-| v0.1.0 | 2026-01-10 | [ダウンロード](#) |
+| v0.1.0 | 2026-01-10 | [ダウンロード](https://github.com/tetdarth/CicadaGallery/releases/download/v0.1.0/cicadagallery-windows-x64.zip) |
 
 ---
 

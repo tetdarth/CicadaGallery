@@ -1,7 +1,10 @@
 ---
 layout: default
 title: よくある質問
+lang: ja
 ---
+
+**🇯🇵 日本語** | [🇺🇸 English](en/faq.md)
 
 # よくある質問 (FAQ)
 

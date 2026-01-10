@@ -1,48 +1,48 @@
 ---
 layout: default
-title: ライセンス発行
-lang: ja
+title: License Activation
+lang: en
 ---
 
-**🇯🇵 日本語** | [🇺🇸 English](en/license.md)
+[🇯🇵 日本語](../license.md) | **🇺🇸 English**
 
-# 🎫 ライセンス発行
+# 🎫 License Activation
 
-Gumroadでご購入いただいた方は、以下のフォームからライセンスキーを取得できます。
+If you purchased through Gumroad, you can obtain your license key using the form below.
 
 <div id="license-app">
   <div class="form-container">
     <div class="form-group">
-      <label for="order_id">注文ID (Order ID)</label>
-      <input type="text" id="order_id" placeholder="例: XXXXXXXXXX" required>
-      <small>Gumroadからの購入完了メールに記載されています</small>
+      <label for="order_id">Order ID</label>
+      <input type="text" id="order_id" placeholder="e.g. XXXXXXXXXX" required>
+      <small>Found in your Gumroad purchase confirmation email</small>
     </div>
     
     <div class="form-group">
-      <label for="email">メールアドレス</label>
-      <input type="email" id="email" placeholder="購入時のメールアドレス" required>
+      <label for="email">Email Address</label>
+      <input type="email" id="email" placeholder="Email used for purchase" required>
     </div>
     
-    <button id="submit-btn" onclick="submitForm()">ライセンスを発行</button>
+    <button id="submit-btn" onclick="submitForm()">Issue License</button>
     
     <div id="message"></div>
   </div>
   
   <div class="help-section">
     <details>
-      <summary>❓ 注文IDの確認方法</summary>
+      <summary>❓ How to find your Order ID</summary>
       <div class="help-content">
-        <h4>📧 メールで確認</h4>
+        <h4>📧 Check your Email</h4>
         <ol>
-          <li>Gumroadから届いた「Receipt for your purchase」メールを開く</li>
-          <li>メール内に記載されている注文IDをコピー</li>
+          <li>Open the "Receipt for your purchase" email from Gumroad</li>
+          <li>Copy the Order ID from the email</li>
         </ol>
         
-        <h4>📚 Gumroadライブラリで確認</h4>
+        <h4>📚 Check Gumroad Library</h4>
         <ol>
-          <li><a href="https://app.gumroad.com/library" target="_blank">Gumroadライブラリ</a>にアクセス</li>
-          <li>CicadaGalleryをクリック</li>
-          <li>URLまたはページ内に表示される注文IDをコピー</li>
+          <li>Visit <a href="https://app.gumroad.com/library" target="_blank">Gumroad Library</a></li>
+          <li>Click on CicadaGallery</li>
+          <li>Copy the Order ID from the URL or page</li>
         </ol>
       </div>
     </details>
@@ -206,13 +206,13 @@ async function submitForm() {
   const email = document.getElementById('email').value.trim();
   
   if (!orderId || !email) {
-    showMessage('error', '注文IDとメールアドレスを入力してください');
+    showMessage('error', 'Please enter both Order ID and email address');
     return;
   }
   
   submitBtn.disabled = true;
-  submitBtn.innerHTML = '<span class="spinner"></span>処理中...';
-  showMessage('loading', 'ライセンスを発行しています...');
+  submitBtn.innerHTML = '<span class="spinner"></span>Processing...';
+  showMessage('loading', 'Issuing your license...');
   
   try {
     const response = await fetch(`${WORKER_URL}/issue-license`, {
@@ -224,16 +224,16 @@ async function submitForm() {
     const data = await response.json();
     
     if (data.success) {
-      showMessage('success', '✅ ' + data.message + '<br><br>📧 メールが届かない場合は、迷惑メールフォルダもご確認ください。');
+      showMessage('success', '✅ ' + data.message + '<br><br>📧 If you don\'t receive the email, please check your spam folder.');
     } else {
       showMessage('error', '❌ ' + data.error);
     }
   } catch (error) {
     console.error('Error:', error);
-    showMessage('error', '❌ 通信エラーが発生しました。しばらく経ってからお試しください。');
+    showMessage('error', '❌ A network error occurred. Please try again later.');
   } finally {
     submitBtn.disabled = false;
-    submitBtn.innerHTML = 'ライセンスを発行';
+    submitBtn.innerHTML = 'Issue License';
   }
 }
 

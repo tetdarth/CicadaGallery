@@ -1,7 +1,10 @@
 ---
 layout: default
 title: 機能一覧
+lang: ja
 ---
+
+**🇯🇵 日本語** | [🇺🇸 English](en/features.md)
 
 # 機能一覧
 

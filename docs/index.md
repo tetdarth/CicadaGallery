@@ -1,7 +1,10 @@
 ---
 layout: default
 title: CicadaGallery
+lang: ja
 ---
+
+**🇯🇵 日本語** | [🇺🇸 English](en/index.md)
 
 # CicadaGallery
 
