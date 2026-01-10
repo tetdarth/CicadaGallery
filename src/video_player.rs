@@ -199,7 +199,7 @@ fn try_play_video(command: &str, args: &[&str]) -> bool {
 
 /// Play video with timestamp using available video players
 /// Tries mpv.net, mpv, VLC, then falls back to system default player
-pub fn play_video_at_timestamp(video_path: &Path, timestamp_seconds: f64, always_on_top: bool, use_gpu_hq: bool, use_custom_shaders: bool, selected_shader: Option<&str>, use_frame_interpolation: bool, volume: u8) -> Result<(), Box<dyn std::error::Error>> {
+pub fn play_video_at_timestamp(video_path: &Path, timestamp_seconds: f64, always_on_top: bool, use_gpu_hq: bool, use_custom_shaders: bool, selected_shader: Option<&str>, volume: u8) -> Result<(), Box<dyn std::error::Error>> {
     let video_path_str = video_path.to_str().unwrap();
     
     // 既存のmpvインスタンスにコマンドを送信
@@ -238,17 +238,6 @@ pub fn play_video_at_timestamp(video_path: &Path, timestamp_seconds: f64, always
         "--deband-grain=8",
     ];
     
-    // Frame interpolation options (GPU-based motion interpolation)
-    // Uses mpv's built-in GPU interpolation for smooth playback
-    let frame_interpolation_args = [
-        "--video-sync=display-resample",
-        "--interpolation=yes",
-        "--tscale=sphinx",
-        "--tscale-blur=0.6991556596428412",
-        "--tscale-radius=1.0",
-        "--tscale-clamp=0.0",
-    ];
-    
     #[cfg(target_os = "windows")]
     {
         // Try to find mpv.exe using get_mpv_path (EXE dir first, then relative)
@@ -264,10 +253,6 @@ pub fn play_video_at_timestamp(video_path: &Path, timestamp_seconds: f64, always
             
             if use_gpu_hq {
                 args.extend(gpu_hq_args.iter().map(|s| s.to_string()));
-            }
-            
-            if use_frame_interpolation {
-                args.extend(frame_interpolation_args.iter().map(|s| s.to_string()));
             }
             
             // Add custom shader arguments
@@ -301,10 +286,6 @@ pub fn play_video_at_timestamp(video_path: &Path, timestamp_seconds: f64, always
         
         if use_gpu_hq {
             args.extend(gpu_hq_args.iter().map(|s| s.to_string()));
-        }
-        
-        if use_frame_interpolation {
-            args.extend(frame_interpolation_args.iter().map(|s| s.to_string()));
         }
         
         // Add custom shader arguments

@@ -53,7 +53,6 @@ pub struct VideoPlayerApp {
     pub use_gpu_hq: bool, // Use GPU high-quality rendering (mpv profile=gpu-hq)
     pub use_custom_shaders: bool, // Use custom GLSL shaders from mpv/glsl_shaders directory
     pub selected_shader: Option<String>, // Selected shader filename
-    pub use_frame_interpolation: bool, // Use frame interpolation (motion smoothing)
     pub i18n: I18n, // Internationalization
     pub metadata_loaded: HashSet<String>, // Videos that have completed metadata loading
     pub sort_field: SortField, // Current sort field
@@ -201,7 +200,6 @@ impl Default for VideoPlayerApp {
             use_gpu_hq: settings.use_gpu_hq,
             use_custom_shaders: settings.use_custom_shaders,
             selected_shader: settings.selected_shader,
-            use_frame_interpolation: settings.use_frame_interpolation,
             i18n,
             metadata_loaded: HashSet::new(),
             sort_field: SortField::AddedDate,
@@ -298,7 +296,6 @@ impl VideoPlayerApp {
             use_gpu_hq: self.use_gpu_hq,
             use_custom_shaders: self.use_custom_shaders,
             selected_shader: self.selected_shader.clone(),
-            use_frame_interpolation: self.use_frame_interpolation,
             language: self.i18n.get_language(),
             added_dates_updated: true, // Keep as true to avoid re-updating
             watched_folders: self.watched_folders.iter().cloned().collect(),
@@ -1074,8 +1071,7 @@ impl VideoPlayerApp {
             let selected_shader = self.selected_shader.as_deref();
             let use_gpu_hq = self.is_premium && self.use_gpu_hq;
             let use_custom_shaders = self.is_premium && self.use_custom_shaders;
-            let use_frame_interpolation = self.is_premium && self.use_frame_interpolation;
-            if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, use_frame_interpolation, self.mpv_volume) {
+            if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, self.mpv_volume) {
                 eprintln!("Video playback error: {}", e);
             }
         }
@@ -1918,8 +1914,7 @@ impl eframe::App for VideoPlayerApp {
                                                     let selected_shader = self.selected_shader.as_deref();
                                                     let use_gpu_hq = self.is_premium && self.use_gpu_hq;
                                                     let use_custom_shaders = self.is_premium && self.use_custom_shaders;
-                                                    let use_frame_interpolation = self.is_premium && self.use_frame_interpolation;
-                                                    if let Err(e) = video_player::play_video_at_timestamp(&video_path, scene.timestamp, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, use_frame_interpolation, self.mpv_volume) {
+                                                    if let Err(e) = video_player::play_video_at_timestamp(&video_path, scene.timestamp, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, self.mpv_volume) {
                                                         eprintln!("Video playback error: {}", e);
                                                     }
                                                 }
@@ -1932,8 +1927,7 @@ impl eframe::App for VideoPlayerApp {
                                                     let selected_shader = self.selected_shader.as_deref();
                                                     let use_gpu_hq = self.is_premium && self.use_gpu_hq;
                                                     let use_custom_shaders = self.is_premium && self.use_custom_shaders;
-                                                    let use_frame_interpolation = self.is_premium && self.use_frame_interpolation;
-                                                    if let Err(e) = video_player::play_video_at_timestamp(&video_path, scene_ts, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, use_frame_interpolation, self.mpv_volume) {
+                                                    if let Err(e) = video_player::play_video_at_timestamp(&video_path, scene_ts, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, self.mpv_volume) {
                                                         eprintln!("Video playback error: {}", e);
                                                     }
                                                     ui.close_menu();
@@ -2111,6 +2105,7 @@ impl eframe::App for VideoPlayerApp {
             // Check for background click: if mouse was clicked but selection didn't change,
             // it means user clicked on empty area
             let left_clicked = ctx.input(|i| i.pointer.button_clicked(egui::PointerButton::Primary));
+            let double_clicked = ctx.input(|i| i.pointer.button_double_clicked(egui::PointerButton::Primary));
             let selection_changed = selection_before != self.selected_video || 
                                    selections_before != self.selected_videos;
             
@@ -2130,8 +2125,8 @@ impl eframe::App for VideoPlayerApp {
             let is_using_pointer = ctx.is_using_pointer();
             
             // If clicked in this panel area and selection didn't change, clear selection
-            // But skip if any popup/window is open or context menu is active
-            if left_clicked && !selection_changed && !any_popup_open && !is_using_pointer {
+            // But skip if any popup/window is open, context menu is active, or double-clicked (playing video)
+            if left_clicked && !double_clicked && !selection_changed && !any_popup_open && !is_using_pointer {
                 // User clicked somewhere but not on a thumbnail
                 // Check if click was in our panel area
                 let pointer_pos = ctx.input(|i| i.pointer.interact_pos());
@@ -2216,11 +2211,6 @@ impl eframe::App for VideoPlayerApp {
                         }
                         ui.label("  GPU high-quality mode uses advanced shaders");
                         
-                        if ui.checkbox(&mut self.use_frame_interpolation, &self.i18n.t("use_frame_interpolation")).changed() {
-                            settings_changed = true;
-                        }
-                        ui.label("  Frame interpolation enables smooth motion");
-                        
                         ui.separator();
                         
                         if ui.checkbox(&mut self.use_custom_shaders, &self.i18n.t("use_custom_shaders")).changed() {
@@ -2268,7 +2258,6 @@ impl eframe::App for VideoPlayerApp {
                         self.use_gpu_hq = false;
                         self.use_custom_shaders = false;
                         self.selected_shader = None;
-                        self.use_frame_interpolation = false;
                         settings_changed = true;
                     }
                     
@@ -2316,8 +2305,7 @@ impl eframe::App for VideoPlayerApp {
                         ui.label(&self.i18n.t("premium_benefit_2")); // 複数タグ/フォルダ選択
                         ui.label(&self.i18n.t("premium_benefit_3")); // GPU高画質レンダリング
                         ui.label(&self.i18n.t("premium_benefit_4")); // カスタムシェーダー
-                        ui.label(&self.i18n.t("premium_benefit_5")); // フレーム補間
-                        ui.label(&self.i18n.t("premium_benefit_6")); // 無制限の動画プロファイル
+                        ui.label(&self.i18n.t("premium_benefit_5")); // 無制限の動画プロファイル
                         
                         ui.add_space(10.0);
                         
@@ -2482,6 +2470,15 @@ impl eframe::App for VideoPlayerApp {
             let mut should_close = false;
             let mut delete_tag = false;
             
+            // Keyboard shortcuts: 1 to confirm, 2 or Escape to cancel
+            if ctx.input(|i| i.key_pressed(egui::Key::Num1)) {
+                delete_tag = true;
+                should_close = true;
+            }
+            if ctx.input(|i| i.key_pressed(egui::Key::Num2) || i.key_pressed(egui::Key::Escape)) {
+                should_close = true;
+            }
+            
             egui::Window::new(&confirm_title)
                 .collapsible(false)
                 .resizable(false)
@@ -2502,12 +2499,16 @@ impl eframe::App for VideoPlayerApp {
                         
                         ui.add_space(16.0);
                         
+                        // Keyboard hint
+                        ui.label(egui::RichText::new("1: OK | 2: Cancel").weak().small());
+                        ui.add_space(4.0);
+                        
                         ui.horizontal(|ui| {
-                            if ui.button(egui::RichText::new("OK").color(egui::Color32::RED)).clicked() {
+                            if ui.button(egui::RichText::new("[1] OK").color(egui::Color32::RED)).clicked() {
                                 delete_tag = true;
                                 should_close = true;
                             }
-                            if ui.button(&cancel_text).clicked() {
+                            if ui.button(format!("[2] {}", &cancel_text)).clicked() {
                                 should_close = true;
                             }
                         });
@@ -2548,6 +2549,36 @@ impl eframe::App for VideoPlayerApp {
             let mut delete_with_videos = false;
             let mut delete_folder_only = false;
             
+            // Check if there are videos in this folder
+            let has_videos = self.folder_delete_confirm.as_ref()
+                .map(|(_, count)| *count > 0)
+                .unwrap_or(false);
+            
+            // Keyboard shortcuts
+            if ctx.input(|i| i.key_pressed(egui::Key::Escape) || i.key_pressed(egui::Key::Num3)) {
+                should_close = true;
+            }
+            if has_videos {
+                // 1: Delete with videos, 2: Folder only, 3: Cancel
+                if ctx.input(|i| i.key_pressed(egui::Key::Num1)) {
+                    delete_with_videos = true;
+                    should_close = true;
+                }
+                if ctx.input(|i| i.key_pressed(egui::Key::Num2)) {
+                    delete_folder_only = true;
+                    should_close = true;
+                }
+            } else {
+                // 1: OK, 2: Cancel
+                if ctx.input(|i| i.key_pressed(egui::Key::Num1)) {
+                    delete_folder_only = true;
+                    should_close = true;
+                }
+                if ctx.input(|i| i.key_pressed(egui::Key::Num2)) {
+                    should_close = true;
+                }
+            }
+            
             egui::Window::new(&confirm_title)
                 .collapsible(false)
                 .resizable(false)
@@ -2567,25 +2598,33 @@ impl eframe::App for VideoPlayerApp {
                         
                         ui.add_space(16.0);
                         
+                        // Keyboard hint
+                        if *video_count > 0 {
+                            ui.label(egui::RichText::new("1: Delete All | 2: Folder Only | 3: Cancel").weak().small());
+                        } else {
+                            ui.label(egui::RichText::new("1: OK | 2: Cancel").weak().small());
+                        }
+                        ui.add_space(4.0);
+                        
                         ui.horizontal(|ui| {
                             if *video_count > 0 {
                                 // Show both options when there are videos
-                                if ui.button(egui::RichText::new(self.i18n.t("delete_videos_too")).color(egui::Color32::RED)).clicked() {
+                                if ui.button(egui::RichText::new(format!("[1] {}", self.i18n.t("delete_videos_too"))).color(egui::Color32::RED)).clicked() {
                                     delete_with_videos = true;
                                     should_close = true;
                                 }
-                                if ui.button(self.i18n.t("folder_only")).clicked() {
+                                if ui.button(format!("[2] {}", self.i18n.t("folder_only"))).clicked() {
                                     delete_folder_only = true;
                                     should_close = true;
                                 }
                             } else {
                                 // No videos, just confirm folder removal
-                                if ui.button("OK").clicked() {
+                                if ui.button("[1] OK").clicked() {
                                     delete_folder_only = true;
                                     should_close = true;
                                 }
                             }
-                            if ui.button(&cancel_text).clicked() {
+                            if ui.button(format!("[{}] {}", if *video_count > 0 { "3" } else { "2" }, &cancel_text)).clicked() {
                                 should_close = true;
                             }
                         });
@@ -2836,7 +2875,6 @@ impl eframe::App for VideoPlayerApp {
                     ui.label(&self.i18n.t("premium_scene_generation"));
                     ui.label(&self.i18n.t("premium_star_ratings"));
                     ui.label(&self.i18n.t("premium_glsl_shaders"));
-                    ui.label(&self.i18n.t("premium_frame_interpolation"));
                     ui.label(&self.i18n.t("premium_gpu_rendering"));
                     ui.label(&self.i18n.t("premium_multi_select"));
                     
@@ -3086,8 +3124,7 @@ impl VideoPlayerApp {
                                 let selected_shader = self.selected_shader.as_deref();
                                 let use_gpu_hq = self.is_premium && self.use_gpu_hq;
                                 let use_custom_shaders = self.is_premium && self.use_custom_shaders;
-                                let use_frame_interpolation = self.is_premium && self.use_frame_interpolation;
-                                if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, use_frame_interpolation, self.mpv_volume) {
+                                if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, self.mpv_volume) {
                                     eprintln!("Video playback error: {}", e);
                                 }
                             }
@@ -3097,8 +3134,7 @@ impl VideoPlayerApp {
                                     let selected_shader = self.selected_shader.as_deref();
                                     let use_gpu_hq = self.is_premium && self.use_gpu_hq;
                                     let use_custom_shaders = self.is_premium && self.use_custom_shaders;
-                                    let use_frame_interpolation = self.is_premium && self.use_frame_interpolation;
-                                    if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, use_frame_interpolation, self.mpv_volume) {
+                                    if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, self.mpv_volume) {
                                         eprintln!("Video playback error: {}", e);
                                     }
                                     ui.close_menu();
@@ -3216,8 +3252,7 @@ impl VideoPlayerApp {
                     let selected_shader = self.selected_shader.as_deref();
                     let use_gpu_hq = self.is_premium && self.use_gpu_hq;
                     let use_custom_shaders = self.is_premium && self.use_custom_shaders;
-                    let use_frame_interpolation = self.is_premium && self.use_frame_interpolation;
-                    if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, use_frame_interpolation, self.mpv_volume) {
+                    if let Err(e) = video_player::play_video_at_timestamp(&video.path, 0.0, self.mpv_always_on_top, use_gpu_hq, use_custom_shaders, selected_shader, self.mpv_volume) {
                         eprintln!("Video playback error: {}", e);
                     }
                 }

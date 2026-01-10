@@ -180,7 +180,6 @@ impl I18n {
         self.add("use_custom_shaders", "Use custom GLSL shaders", "カスタムGLSLシェーダーを使用", "使用自定义GLSL着色器");
         self.add("select_shader", "Select shader:", "シェーダーを選択:", "选择着色器:");
         self.add("no_shader", "No shader", "シェーダーなし", "无着色器");
-        self.add("use_frame_interpolation", "Use frame interpolation (motion smoothing)", "フレーム補間を使用 (モーション補間)", "使用帧插值 (运动平滑)");
         
         // Tag management
         self.add("manage_tags", "Manage Tags...", "タグを管理...", "管理标签...");
@@ -227,7 +226,6 @@ impl I18n {
         self.add("premium_scene_generation", "• Scene thumbnail generation", "• シーンサムネイル生成", "• 场景缩略图生成");
         self.add("premium_star_ratings", "• 1-5 star ratings", "• 1-5星評価", "• 1-5星评分");
         self.add("premium_glsl_shaders", "• GLSL shaders", "• GLSLシェーダー", "• GLSL着色器");
-        self.add("premium_frame_interpolation", "• Frame interpolation", "• フレーム補間", "• 帧插值");
         self.add("premium_gpu_rendering", "• GPU high-quality rendering", "• GPU高品質レンダリング", "• GPU高质量渲染");
         self.add("premium_unlimited_storage", "• Unlimited video storage", "• 無制限の動画プロファイル", "• 无限视频存储");
         self.add("premium_multi_select", "• Multi-select for folders/tags", "• フォルダ/タグの複数選択", "• 文件夹/标签多选");
@@ -259,8 +257,7 @@ impl I18n {
         self.add("premium_benefit_2", "* Multi-select folders & tags", "* フォルダ・タグの複数選択", "* 多选文件夹和标签");
         self.add("premium_benefit_3", "* GPU high-quality rendering", "* GPU高画質レンダリング", "* GPU高画质渲染");
         self.add("premium_benefit_4", "* Custom GLSL shaders", "* カスタムGLSLシェーダー", "* 自定义GLSL着色器");
-        self.add("premium_benefit_5", "* Frame interpolation", "* フレーム補間(ぬるぬる再生)", "* 帧插值（流畅播放）");
-        self.add("premium_benefit_6", "* Unlimited video profiles", "* 無制限の動画プロファイル", "* 无限视频配置");
+        self.add("premium_benefit_5", "* Unlimited video profiles", "* 無制限の動画プロファイル", "* 无限视频配置");
         self.add("purchase_premium", "Purchase Premium", "プレミアム版を購入", "购买高级版");
         
         // Free tier scene limit

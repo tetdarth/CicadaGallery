@@ -290,7 +290,6 @@ pub struct AppSettings {
     pub use_gpu_hq: bool,
     pub use_custom_shaders: bool,
     pub selected_shader: Option<String>, // Selected shader filename
-    pub use_frame_interpolation: bool,
     pub language: Language, // UI language
     #[serde(default)]
     pub added_dates_updated: bool, // Flag to track if added_date has been updated from file metadata
@@ -331,7 +330,6 @@ impl Default for AppSettings {
             use_gpu_hq: false,
             use_custom_shaders: false,
             selected_shader: None,
-            use_frame_interpolation: false,
             language: Language::default(),
             added_dates_updated: false,
             watched_folders: Vec::new(),
