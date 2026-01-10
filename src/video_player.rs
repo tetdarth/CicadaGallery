@@ -238,11 +238,15 @@ pub fn play_video_at_timestamp(video_path: &Path, timestamp_seconds: f64, always
         "--deband-grain=8",
     ];
     
-    // Frame interpolation options
+    // Frame interpolation options (GPU-based motion interpolation)
+    // Uses mpv's built-in GPU interpolation for smooth playback
     let frame_interpolation_args = [
-        "--interpolation=yes",
-        "--tscale=oversample",
         "--video-sync=display-resample",
+        "--interpolation=yes",
+        "--tscale=sphinx",
+        "--tscale-blur=0.6991556596428412",
+        "--tscale-radius=1.0",
+        "--tscale-clamp=0.0",
     ];
     
     #[cfg(target_os = "windows")]

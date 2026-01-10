@@ -19,6 +19,8 @@ pub struct VideoFile {
     pub duration: Option<f64>, // in seconds
     pub file_size: u64,
     pub resolution: Option<(u32, u32)>, // (width, height)
+    #[serde(default)]
+    pub frame_rate: Option<f64>, // frames per second
     pub thumbnail_path: Option<PathBuf>,
     pub tags: Vec<String>,
     pub folder: Option<String>,
@@ -67,6 +69,7 @@ impl VideoFile {
             duration: None,
             file_size: 0,
             resolution: None,
+            frame_rate: None,
             thumbnail_path: None,
             tags: Vec::new(),
             folder: None,

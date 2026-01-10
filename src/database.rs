@@ -240,6 +240,7 @@ fn video_from_row(row: &rusqlite::Row) -> SqlResult<VideoFile> {
         duration,
         file_size: file_size as u64,
         resolution,
+        frame_rate: None, // Frame rate is loaded separately if needed
         thumbnail_path,
         tags: Vec::new(), // Will be filled separately
         folder,

@@ -269,6 +269,43 @@ pub fn get_video_resolution(video_path: &Path) -> Option<(u32, u32)> {
     }
 }
 
+/// Get video frame rate (fps) using FFprobe
+pub fn get_video_frame_rate(video_path: &Path) -> Option<f64> {
+    let mut cmd = Command::new(get_ffprobe_path());
+    cmd.args(&[
+            "-v", "error",
+            "-select_streams", "v:0",
+            "-show_entries", "stream=r_frame_rate",
+            "-of", "default=noprint_wrappers=1:nokey=1",
+            video_path.to_str()?
+        ]);
+    
+    // Hide console window on Windows
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    
+    let output = cmd.output().ok()?;
+    
+    let fps_str = String::from_utf8_lossy(&output.stdout);
+    let fps_str = fps_str.trim();
+    
+    // FFprobe returns frame rate as a fraction like "30000/1001" or "24/1"
+    if let Some((num, den)) = fps_str.split_once('/') {
+        let numerator = num.parse::<f64>().ok()?;
+        let denominator = den.parse::<f64>().ok()?;
+        if denominator > 0.0 {
+            return Some(numerator / denominator);
+        }
+    }
+    
+    // Try parsing as a direct number
+    fps_str.parse::<f64>().ok()
+}
+
 /// Format timestamp as HH:MM:SS
 pub fn format_timestamp(seconds: f64) -> String {
     let hours = (seconds / 3600.0).floor() as u32;

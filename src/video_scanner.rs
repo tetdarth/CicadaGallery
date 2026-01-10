@@ -1,6 +1,6 @@
 use crate::models::VideoFile;
 use crate::thumbnail;
-use crate::scene_detection::{get_video_duration, get_video_resolution};
+use crate::scene_detection::{get_video_duration, get_video_resolution, get_video_frame_rate};
 use std::path::PathBuf;
 use walkdir::WalkDir;
 use rayon::prelude::*;
@@ -60,6 +60,7 @@ pub fn process_videos_parallel(videos: Vec<VideoFile>, cache_dir: &PathBuf) -> V
             // Get video metadata using FFmpeg
             video.duration = get_video_duration(&video.path);
             video.resolution = get_video_resolution(&video.path);
+            video.frame_rate = get_video_frame_rate(&video.path);
             
             video
         })
@@ -83,6 +84,7 @@ pub fn process_videos_parallel_with_limit(
             // Get video metadata using FFmpeg
             video.duration = get_video_duration(&video.path);
             video.resolution = get_video_resolution(&video.path);
+            video.frame_rate = get_video_frame_rate(&video.path);
             
             video
         })

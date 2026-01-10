@@ -130,6 +130,7 @@ impl I18n {
         self.add("duration_label", "Duration: {}", "再生時間: {}", "时长: {}");
         self.add("resolution", "Resolution", "解像度", "分辨率");
         self.add("resolution_label", "Resolution: {}", "解像度: {}", "分辨率: {}");
+        self.add("framerate_label", "Frame rate: {} fps", "フレームレート: {} fps", "帧率: {} fps");
         self.add("file_size", "File Size", "ファイルサイズ", "文件大小");
         self.add("size_gb", "Size: {:.2} GB", "サイズ: {:.2} GB", "大小: {:.2} GB");
         self.add("size_mb", "Size: {:.1} MB", "サイズ: {:.1} MB", "大小: {:.1} MB");
@@ -261,6 +262,11 @@ impl I18n {
         self.add("premium_benefit_5", "* Frame interpolation", "* フレーム補間(ぬるぬる再生)", "* 帧插值（流畅播放）");
         self.add("premium_benefit_6", "* Unlimited video profiles", "* 無制限の動画プロファイル", "* 无限视频配置");
         self.add("purchase_premium", "Purchase Premium", "プレミアム版を購入", "购买高级版");
+        
+        // Free tier scene limit
+        self.add("free_tier_scene_limit", "(Free: up to 5 scenes)", "(無料版: 最大5シーンまで)", "(免费版：最多5个场景)");
+        self.add("free_tier_scene_limit_reached", "Free tier: 5 scenes limit", "無料版: 5シーンまで", "免费版：5个场景限制");
+        self.add("premium_unlimited_scenes", "Upgrade to Premium for unlimited scene thumbnails!", "プレミアム版で無制限のシーンサムネイル!", "升级到高级版获取无限场景缩略图！");
     }
     
     fn add(&mut self, key: &str, en: &str, ja: &str, zh: &str) {

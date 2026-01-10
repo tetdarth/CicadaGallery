@@ -595,6 +595,21 @@ impl VideoPlayerApp {
         }
     }
     
+    /// Set rating for multiple videos at once
+    pub fn set_rating_for_selected(&mut self, rating: u8) {
+        let video_ids: Vec<String> = self.selected_videos.iter().cloned().collect();
+        for video_id in video_ids {
+            if let Some(video) = self.database.get_video_mut(&video_id) {
+                if !self.is_premium && rating > 1 {
+                    video.rating = 1;
+                } else {
+                    video.rating = rating.min(5);
+                }
+            }
+        }
+        let _ = database::save_database(&self.database);
+    }
+    
     /// Activate a license key
     pub fn activate_license(&mut self, license_key: &str) {
         match license::verify_license(license_key) {
@@ -639,6 +654,18 @@ impl VideoPlayerApp {
         if let Some(video) = self.database.get_video_mut(video_id) {
             let cache_dir = thumbnail::get_cache_dir();
             let _ = scene_detection::detect_scenes(video, &cache_dir);
+            
+            // Free tier: limit to 5 scenes
+            if !self.is_premium && video.scenes.len() > 5 {
+                // Remove excess scenes and their thumbnails
+                while video.scenes.len() > 5 {
+                    if let Some(scene) = video.scenes.pop() {
+                        let _ = std::fs::remove_file(&scene.thumbnail_path);
+                        self.texture_cache.remove(&scene.thumbnail_path);
+                    }
+                }
+            }
+            
             let _ = database::save_database(&self.database);
         }
     }
@@ -1582,6 +1609,17 @@ impl eframe::App for VideoPlayerApp {
                                 }
                             });
                             
+                            // Frame rate
+                            ui.horizontal(|ui| {
+                                ui.label(egui::RichText::new("🎬").size(14.0));
+                                if let Some(fps) = video.frame_rate {
+                                    let fps_text = self.i18n.t("framerate_label").replace("{}", &format!("{:.2}", fps));
+                                    ui.label(&fps_text);
+                                } else {
+                                    ui.label(self.i18n.t("framerate_label").replace("{}", "-"));
+                                }
+                            });
+                            
                             // File size
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("💾").size(14.0));
@@ -1632,6 +1670,7 @@ impl eframe::App for VideoPlayerApp {
                         ui.add_space(5.0);
                         
                         // Star rating
+                        let has_multi_selection = !self.selected_videos.is_empty();
                         ui.horizontal(|ui| {
                             ui.label(&self.i18n.t("rating"));
                             let current_rating = video.rating;
@@ -1644,13 +1683,30 @@ impl eframe::App for VideoPlayerApp {
                                 if ui.button(egui::RichText::new(star_text).size(24.0)).clicked() {
                                     // Toggle: if clicking current rating, set to 0 (no rating)
                                     let new_rating = if current_rating == star { 0 } else { star };
+                                    
+                                    // Apply to all selected videos if multi-selection exists
+                                    if has_multi_selection {
+                                        self.set_rating_for_selected(new_rating);
+                                    }
+                                    // Also apply to current video (selected_video)
                                     self.set_rating(video_id, new_rating);
                                 }
                             }
                             if current_rating > 0 && ui.small_button("×").clicked() {
+                                if has_multi_selection {
+                                    self.set_rating_for_selected(0);
+                                }
                                 self.set_rating(video_id, 0);
                             }
                         });
+                        
+                        // Show multi-selection indicator
+                        if has_multi_selection {
+                            let count = self.selected_videos.len();
+                            ui.label(egui::RichText::new(
+                                format!("({} videos selected - rating applies to all)", count)
+                            ).small().weak());
+                        }
                         
                         ui.add_space(10.0);
                         ui.separator();
@@ -1776,29 +1832,33 @@ impl eframe::App for VideoPlayerApp {
                         ui.add_space(10.0);
                         ui.separator();
                         
-                        // Scene thumbnails section (premium only)
-                        if self.is_premium {
-                            ui.heading(&self.i18n.t("scene_thumbnails"));
-                            
-                            // Show selection controls if scenes are selected
-                            if !self.selected_scenes.is_empty() {
-                                ui.horizontal(|ui| {
-                                    let selected_text = self.i18n.t("selected_count").replace("{}", &self.selected_scenes.len().to_string());
-                                    ui.label(&selected_text);
-                                    if ui.button(&self.i18n.t("clear_selection")).clicked() {
-                                        self.selected_scenes.clear();
-                                        self.last_selected_scene = None;
-                                    }
-                                    if ui.button(&self.i18n.t("delete_selected")).clicked() {
-                                        self.delete_selected_scenes(video_id);
-                                    }
-                                });
-                            }
-                            
-                            ui.separator();
+                        // Scene thumbnails section
+                        ui.heading(&self.i18n.t("scene_thumbnails"));
+                        
+                        // Show selection controls if scenes are selected
+                        if !self.selected_scenes.is_empty() {
+                            ui.horizontal(|ui| {
+                                let selected_text = self.i18n.t("selected_count").replace("{}", &self.selected_scenes.len().to_string());
+                                ui.label(&selected_text);
+                                if ui.button(&self.i18n.t("clear_selection")).clicked() {
+                                    self.selected_scenes.clear();
+                                    self.last_selected_scene = None;
+                                }
+                                if ui.button(&self.i18n.t("delete_selected")).clicked() {
+                                    self.delete_selected_scenes(video_id);
+                                }
+                            });
+                        }
+                        
+                        ui.separator();
+                        
                         // Show generate button if no scenes exist
                         if video.scenes.is_empty() {
                             ui.label(&self.i18n.t("no_scenes_yet"));
+                            // Free tier: show limit info
+                            if !self.is_premium {
+                                ui.label(&self.i18n.t("free_tier_scene_limit"));
+                            }
                             if ui.button(&self.i18n.t("generate_scenes")).clicked() {
                                 self.generate_scenes(video_id);
                             }
@@ -1895,25 +1955,39 @@ impl eframe::App for VideoPlayerApp {
                                         
                                         ui.add_space(5.0);
                                     }
+                                    
+                                    // Free tier: show premium promotion after scenes
+                                    if !self.is_premium {
+                                        ui.add_space(10.0);
+                                        ui.separator();
+                                        ui.vertical_centered(|ui| {
+                                            ui.label(egui::RichText::new(&self.i18n.t("free_tier_scene_limit_reached")).strong());
+                                            ui.add_space(5.0);
+                                            ui.label(&self.i18n.t("premium_unlimited_scenes"));
+                                            ui.add_space(5.0);
+                                            if ui.button(&self.i18n.t("purchase_premium")).clicked() {
+                                                #[cfg(target_os = "windows")]
+                                                {
+                                                    let _ = std::process::Command::new("cmd")
+                                                        .args(["/C", "start", "", "https://cicadagallery.com/premium"])
+                                                        .spawn();
+                                                }
+                                                #[cfg(target_os = "macos")]
+                                                {
+                                                    let _ = std::process::Command::new("open")
+                                                        .arg("https://cicadagallery.com/premium")
+                                                        .spawn();
+                                                }
+                                                #[cfg(target_os = "linux")]
+                                                {
+                                                    let _ = std::process::Command::new("xdg-open")
+                                                        .arg("https://cicadagallery.com/premium")
+                                                        .spawn();
+                                                }
+                                            }
+                                        });
+                                    }
                                 });
-                        }
-                        } else {
-                            // Free tier: Show locked message for scene thumbnails
-                            ui.vertical_centered(|ui| {
-                                ui.add_space(50.0);
-                                ui.heading(&self.i18n.t("scene_thumbnails_locked"));
-                                ui.add_space(10.0);
-                                ui.label(&self.i18n.t("premium_feature_available"));
-                                ui.add_space(5.0);
-                                ui.label(&self.i18n.t("premium_features"));
-                                ui.label(&self.i18n.t("premium_scene_generation"));
-                                ui.label(&self.i18n.t("premium_star_ratings"));
-                                ui.label(&self.i18n.t("premium_glsl_shaders"));
-                                ui.label(&self.i18n.t("premium_frame_interpolation"));
-                                ui.label(&self.i18n.t("premium_gpu_rendering"));
-                                ui.label(&self.i18n.t("premium_unlimited_storage"));
-                                ui.label(&self.i18n.t("premium_multi_select"));
-                            });
                         }
                     }
                 } else {
