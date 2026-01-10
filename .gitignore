@@ -5,3 +5,18 @@ cache/
 *.exe
 *.pdb
 mpv/
+ffmpeg/
+image/
+
+# Premium module (not included in public repository)
+src/license_premium.rs
+src/bin/license_generator.rs
+licenses.txt
+new_licenses.txt
+
+# License Worker (separate deployment)
+license-worker/
+license-worker/.dev.vars
+
+# CicadaGallery_docs (deprecated - now using docs/)
+CicadaGallery_docs/

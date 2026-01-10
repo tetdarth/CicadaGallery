@@ -8,6 +8,8 @@ mod database;
 mod scene_detection;
 mod i18n;
 mod license;
+#[cfg(feature = "premium")]
+mod license_premium;
 mod app;
 
 use app::VideoPlayerApp;

@@ -314,6 +314,131 @@ impl VideoPlayerApp {
     }
     
     // Execute methods for heavy operations
+    
+    /// Handle dropped files and folders (drag & drop)
+    pub fn handle_dropped_files(&mut self, dropped_files: Vec<egui::DroppedFile>) {
+        if dropped_files.is_empty() {
+            return;
+        }
+        
+        // Check video limit for free tier
+        if !self.is_premium && self.database.videos.len() >= 100 {
+            eprintln!("[Free tier] Video limit reached (100 videos max). Upgrade to premium for unlimited videos.");
+            self.show_premium_promotion_window = true;
+            return;
+        }
+        
+        let video_extensions = ["mp4", "avi", "mkv", "mov", "wmv", "flv", "webm", "m4v", "mpg", "mpeg"];
+        let cache_dir = thumbnail::get_cache_dir();
+        
+        let mut folders_to_add: Vec<PathBuf> = Vec::new();
+        let mut files_to_add: Vec<PathBuf> = Vec::new();
+        
+        for dropped_file in dropped_files {
+            if let Some(path) = dropped_file.path {
+                if path.is_dir() {
+                    folders_to_add.push(path);
+                } else if path.is_file() {
+                    // Check if it's a video file
+                    if let Some(ext) = path.extension() {
+                        let ext_lower = ext.to_string_lossy().to_lowercase();
+                        if video_extensions.contains(&ext_lower.as_str()) {
+                            files_to_add.push(path);
+                        }
+                    }
+                }
+            }
+        }
+        
+        // Process folders first
+        for folder in folders_to_add {
+            if !self.is_premium && self.database.videos.len() >= 100 {
+                self.show_premium_promotion_window = true;
+                break;
+            }
+            
+            eprintln!("[drag&drop] Processing folder: {:?}", folder);
+            
+            let videos = video_scanner::scan_directory(folder.clone());
+            
+            // Get existing video paths for quick lookup
+            let existing_paths: HashSet<PathBuf> = self.database.videos.iter()
+                .filter_map(|v| v.path.canonicalize().ok())
+                .collect();
+            
+            // Filter out existing videos
+            let new_videos: Vec<_> = videos.into_iter()
+                .filter(|video| {
+                    match video.path.canonicalize() {
+                        Ok(canonical_path) => !existing_paths.contains(&canonical_path),
+                        Err(_) => false,
+                    }
+                })
+                .collect();
+            
+            // Process videos with free tier limit
+            let current_count = self.database.videos.len();
+            let processed_videos = if self.is_premium {
+                video_scanner::process_videos_parallel(new_videos, &cache_dir)
+            } else {
+                let remaining_slots = 100_usize.saturating_sub(current_count);
+                if remaining_slots == 0 {
+                    self.show_premium_promotion_window = true;
+                    Vec::new()
+                } else {
+                    if new_videos.len() > remaining_slots {
+                        self.show_premium_promotion_window = true;
+                    }
+                    video_scanner::process_videos_parallel_with_limit(new_videos, &cache_dir, remaining_slots)
+                }
+            };
+            
+            for video in processed_videos {
+                self.database.add_video(video);
+            }
+            
+            // Add folder to watched folders
+            self.watched_folders.insert(folder);
+        }
+        
+        // Process individual files
+        for file in files_to_add {
+            if !self.is_premium && self.database.videos.len() >= 100 {
+                self.show_premium_promotion_window = true;
+                break;
+            }
+            
+            // Check if file already exists in database
+            let canonical_path = match file.canonicalize() {
+                Ok(p) => p,
+                Err(_) => continue,
+            };
+            
+            let already_exists = self.database.videos.iter()
+                .any(|v| v.path.canonicalize().ok() == Some(canonical_path.clone()));
+            
+            if already_exists {
+                eprintln!("[drag&drop] Skipping existing video: {:?}", file);
+                continue;
+            }
+            
+            eprintln!("[drag&drop] Adding video: {:?}", file);
+            
+            let mut video = VideoFile::new(file.clone());
+            video.thumbnail_path = thumbnail::create_video_thumbnail(&file, &cache_dir);
+            video.duration = get_video_duration(&file);
+            video.resolution = get_video_resolution(&file);
+            
+            self.database.add_video(video);
+        }
+        
+        // Setup folder watcher for new folders
+        self.setup_folder_watcher();
+        
+        // Save database
+        let _ = database::save_database(&self.database);
+    }
+    
     pub fn add_files(&mut self) {
         // Check video limit for free tier
         if !self.is_premium && self.database.videos.len() >= 100 {
@@ -1214,6 +1339,12 @@ impl VideoPlayerApp {
 
 impl eframe::App for VideoPlayerApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
+        // Handle dropped files (drag & drop)
+        let dropped_files: Vec<egui::DroppedFile> = ctx.input(|i| i.raw.dropped_files.clone());
+        if !dropped_files.is_empty() {
+            self.handle_dropped_files(dropped_files);
+        }
+        
         // Process any completed texture loads from background threads
         self.process_loaded_textures(ctx);
         

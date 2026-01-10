@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 default-run = "cicada_gallery"
 
+[features]
+default = []
+premium = ["ed25519-dalek", "base64", "hex"]
+
 [dependencies]
 # GUI framework
 eframe = "0.29"
@@ -44,10 +48,10 @@ rayon = "1.10"
 # SQLite database
 rusqlite = { version = "0.31", features = ["bundled"] }
 
-# License verification
-ed25519-dalek = { version = "2.1", features = ["rand_core"] }
-base64 = "0.22"
-hex = "0.4"
+# License verification (premium only)
+ed25519-dalek = { version = "2.1", features = ["rand_core"], optional = true }
+base64 = { version = "0.22", optional = true }
+hex = { version = "0.4", optional = true }
 rand = "0.8"
 
 [target.'cfg(windows)'.dependencies]

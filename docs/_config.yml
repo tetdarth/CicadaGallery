@@ -1,0 +1,31 @@
+# CicadaGallery GitHub Pages Configuration
+title: CicadaGallery
+description: Rust製の動画管理・再生アプリケーション
+theme: jekyll-theme-cayman
+show_downloads: true
+
+# Repository info
+repository: tetdarth/cicadagallery
+
+# Base URL for GitHub Pages (docs folder)
+baseurl: ""
+
+# Plugins
+plugins:
+  - jekyll-relative-links
+
+# Navigation
+header_pages:
+  - index.md
+  - features.md
+  - download.md
+  - license.md
+  - faq.md
+
+# Default language
+lang: ja
+
+# SEO
+author: tetdarth
+twitter:
+  card: https://x.com/tttettt4
