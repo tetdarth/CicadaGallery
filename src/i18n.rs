@@ -251,6 +251,16 @@ impl I18n {
         self.add("never_expires", "Never", "無期限", "永不过期");
         self.add("license_status", "Status:", "ステータス:", "状态:");
         self.add("view_license", "View License", "ライセンス情報", "查看许可证");
+        
+        // Premium purchase promotion
+        self.add("premium_benefits_title", "[Premium Benefits]", "[プレミアム版の特典]", "[高级版特权]");
+        self.add("premium_benefit_1", "* 5-star rating system", "* 5段階評価システム", "* 5星评分系统");
+        self.add("premium_benefit_2", "* Multi-select folders & tags", "* フォルダ・タグの複数選択", "* 多选文件夹和标签");
+        self.add("premium_benefit_3", "* GPU high-quality rendering", "* GPU高画質レンダリング", "* GPU高画质渲染");
+        self.add("premium_benefit_4", "* Custom GLSL shaders", "* カスタムGLSLシェーダー", "* 自定义GLSL着色器");
+        self.add("premium_benefit_5", "* Frame interpolation", "* フレーム補間(ぬるぬる再生)", "* 帧插值（流畅播放）");
+        self.add("premium_benefit_6", "* Unlimited video profiles", "* 無制限の動画プロファイル", "* 无限视频配置");
+        self.add("purchase_premium", "Purchase Premium", "プレミアム版を購入", "购买高级版");
     }
     
     fn add(&mut self, key: &str, en: &str, ja: &str, zh: &str) {

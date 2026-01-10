@@ -2117,31 +2117,22 @@ impl eframe::App for VideoPlayerApp {
                         settings_changed = true;
                     }
                     
-                    ui.add_enabled_ui(self.is_premium, |ui| {
+                    // GPU settings - only show for premium users
+                    if self.is_premium {
+                        ui.add_space(5.0);
+                        
                         if ui.checkbox(&mut self.use_gpu_hq, &self.i18n.t("use_gpu_hq")).changed() {
                             settings_changed = true;
                         }
-                        if !self.is_premium {
-                            ui.label("🔒 Premium feature");
-                        } else {
-                            ui.label("⚠ GPU high-quality mode uses advanced shaders for better image quality");
-                        }
-                    });
-                    
-                    ui.add_enabled_ui(self.is_premium, |ui| {
+                        ui.label("  GPU high-quality mode uses advanced shaders");
+                        
                         if ui.checkbox(&mut self.use_frame_interpolation, &self.i18n.t("use_frame_interpolation")).changed() {
                             settings_changed = true;
                         }
-                        if !self.is_premium {
-                            ui.label("🔒 Premium feature");
-                        } else {
-                            ui.label("⚠ Frame interpolation enables smooth motion between frames");
-                        }
-                    });
-                    
-                    ui.separator();
-                    
-                    ui.add_enabled_ui(self.is_premium, |ui| {
+                        ui.label("  Frame interpolation enables smooth motion");
+                        
+                        ui.separator();
+                        
                         if ui.checkbox(&mut self.use_custom_shaders, &self.i18n.t("use_custom_shaders")).changed() {
                             settings_changed = true;
                         }
@@ -2152,13 +2143,9 @@ impl eframe::App for VideoPlayerApp {
                                 self.show_shader_management_window = true;
                             }
                         } else {
-                            ui.label("📁 Place .glsl shader files in the mpv/glsl_shaders directory");
+                            ui.label("  Place .glsl shader files in mpv/glsl_shaders");
                         }
-                        
-                        if !self.is_premium {
-                            ui.label("🔒 Premium feature");
-                        }
-                    });
+                    }
                     
                     ui.separator();
                     ui.heading(&self.i18n.t("management"));
@@ -2225,12 +2212,52 @@ impl eframe::App for VideoPlayerApp {
                                 ui.label(egui::RichText::new("❌ Invalid").color(egui::Color32::RED));
                             }
                         });
+                        
+                        ui.add_space(5.0);
+                        if ui.button(&self.i18n.t("enter_license_key")).clicked() {
+                            self.show_license_window = true;
+                        }
                     } else {
-                        ui.label("No license activated");
-                    }
-                    
-                    if ui.button(&self.i18n.t("enter_license_key")).clicked() {
-                        self.show_license_window = true;
+                        // Premium promotion for free users
+                        ui.label(egui::RichText::new(&self.i18n.t("premium_benefits_title")).strong());
+                        ui.add_space(5.0);
+                        
+                        ui.label(&self.i18n.t("premium_benefit_1")); // 5つ星レーティング
+                        ui.label(&self.i18n.t("premium_benefit_2")); // 複数タグ/フォルダ選択
+                        ui.label(&self.i18n.t("premium_benefit_3")); // GPU高画質レンダリング
+                        ui.label(&self.i18n.t("premium_benefit_4")); // カスタムシェーダー
+                        ui.label(&self.i18n.t("premium_benefit_5")); // フレーム補間
+                        ui.label(&self.i18n.t("premium_benefit_6")); // 無制限の動画プロファイル
+                        
+                        ui.add_space(10.0);
+                        
+                        ui.horizontal(|ui| {
+                            if ui.button(&self.i18n.t("purchase_premium")).clicked() {
+                                // Open purchase page using platform-specific command
+                                #[cfg(target_os = "windows")]
+                                {
+                                    let _ = std::process::Command::new("cmd")
+                                        .args(["/C", "start", "", "https://cicadagallery.com/premium"])
+                                        .spawn();
+                                }
+                                #[cfg(target_os = "macos")]
+                                {
+                                    let _ = std::process::Command::new("open")
+                                        .arg("https://cicadagallery.com/premium")
+                                        .spawn();
+                                }
+                                #[cfg(target_os = "linux")]
+                                {
+                                    let _ = std::process::Command::new("xdg-open")
+                                        .arg("https://cicadagallery.com/premium")
+                                        .spawn();
+                                }
+                            }
+                            
+                            if ui.button(&self.i18n.t("enter_license_key")).clicked() {
+                                self.show_license_window = true;
+                            }
+                        });
                     }
                 });
         }
