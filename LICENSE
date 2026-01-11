@@ -1,0 +1,53 @@
+CicadaGallery Proprietary License
+
+Copyright (c) 2026 tetdarth. All rights reserved.
+
+TERMS AND CONDITIONS
+
+1. GRANT OF LICENSE
+   This software is licensed, not sold. Upon valid purchase, the purchaser
+   ("Licensee") is granted a non-exclusive, non-transferable, limited license
+   to use this software for personal or internal business purposes.
+
+2. RESTRICTIONS
+   The Licensee may NOT:
+   - Redistribute, sublicense, rent, lease, or lend the software to any third party
+   - Sell, resell, or transfer the license to any third party
+   - Modify, reverse engineer, decompile, or disassemble the software
+   - Remove or alter any proprietary notices, labels, or marks on the software
+   - Use the software for any unlawful purpose
+
+3. FREE TIER
+   A limited free version of this software is available for personal use.
+   The free tier has feature restrictions as described in the documentation.
+
+4. PREMIUM LICENSE
+   Premium features require a valid license key obtained through authorized
+   purchase channels. Each license key is valid for one user only.
+
+5. INTELLECTUAL PROPERTY
+   This software and all copies thereof are proprietary to tetdarth and title
+   thereto remains exclusively with tetdarth. All rights not specifically
+   granted in this license are reserved by tetdarth.
+
+6. THIRD-PARTY COMPONENTS
+   This software includes third-party open source components (mpv, FFmpeg)
+   which are subject to their own licenses. See licenses.txt for details.
+
+7. DISCLAIMER OF WARRANTY
+   THIS SOFTWARE IS PROVIDED "AS IS" WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+   IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+   FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+
+8. LIMITATION OF LIABILITY
+   IN NO EVENT SHALL TETDARTH BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+   LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+   FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+   DEALINGS IN THE SOFTWARE.
+
+9. TERMINATION
+   This license is effective until terminated. It will terminate automatically
+   if the Licensee fails to comply with any term of this license. Upon
+   termination, the Licensee must destroy all copies of the software.
+
+For inquiries, contact: tetdarth (via GitHub)
