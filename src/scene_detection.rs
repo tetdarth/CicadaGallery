@@ -15,8 +15,16 @@ pub fn detect_scenes(video: &mut VideoFile, cache_dir: &Path) -> Result<(), Box<
         std::fs::create_dir_all(&scene_dir)?;
     }
     
-    // Check if scenes already exist
-    if !video.scenes.is_empty() {
+    // Check if non-manual scenes already exist (skip if auto-detected scenes present)
+    let has_auto_scenes = video.scenes.iter().any(|scene| {
+        if let Some(filename) = std::path::Path::new(&scene.thumbnail_path).file_name() {
+            !filename.to_string_lossy().starts_with("scene_manual_")
+        } else {
+            false
+        }
+    });
+    
+    if has_auto_scenes {
         return Ok(());
     }
     

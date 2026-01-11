@@ -159,7 +159,7 @@ impl I18n {
         self.add("select_or_create_tag", "Select existing tag or create new:", "既存のタグを選択または新規作成:", "选择现有标签或创建新标签:");
         
         // Scenes
-        self.add("scene_thumbnails", "Scene Thumbnails", "シーンサムネイル", "场景缩略图");
+        self.add("scene_thumbnails", "Scenes", "シーン", "场景");
         self.add("generate_scenes", "Generate Scene Thumbnails", "シーンサムネイルを生成", "生成场景缩略图");
         self.add("refresh_scenes", "↻ Refresh", "↻ 再取得", "↻ 刷新");
         self.add("no_scenes_yet", "No scenes detected yet.", "まだシーンが検出されていません。", "尚未检测到场景。");
