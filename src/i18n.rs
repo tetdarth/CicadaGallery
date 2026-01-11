@@ -117,6 +117,7 @@ impl I18n {
         self.add("delete", "Delete", "削除", "删除");
         self.add("delete_selected", "Delete Selected", "選択項目を削除", "删除所选项");
         self.add("show_in_folder", "Show in Folder", "フォルダで表示", "在文件夹中显示");
+        self.add("refresh_profile", "Refresh Profile", "プロファイルを再更新", "刷新配置");
         self.add("toggle_favorite", "Toggle Favorite", "お気に入り切替", "切换收藏");
         self.add("clear_selection", "Clear Selection", "選択解除", "清除选择");
         
@@ -139,6 +140,8 @@ impl I18n {
         self.add("tags_label", "Tags: {}", "タグ: {}", "标签: {}");
         self.add("added_date", "Created Date", "作成日時", "创建日期");
         self.add("added_label", "Created: {}", "作成: {}", "创建: {}");
+        self.add("more_details", "▼ More Details", "▼ 詳細情報", "▼ 更多详情");
+        self.add("less_details", "▲ Less", "▲ 閣じる", "▲ 收起");
         self.add("last_played", "Last Played", "最終再生", "上次播放");
         self.add("last_played_label", "Last Played: {}", "最終再生: {}", "上次播放: {}");
         self.add("favorite", "Favorite", "お気に入り", "收藏");
@@ -158,9 +161,12 @@ impl I18n {
         // Scenes
         self.add("scene_thumbnails", "Scene Thumbnails", "シーンサムネイル", "场景缩略图");
         self.add("generate_scenes", "Generate Scene Thumbnails", "シーンサムネイルを生成", "生成场景缩略图");
+        self.add("refresh_scenes", "↻ Refresh", "↻ 再取得", "↻ 刷新");
         self.add("no_scenes_yet", "No scenes detected yet.", "まだシーンが検出されていません。", "尚未检测到场景。");
         self.add("play_from_scene", "Play from Scene", "シーンから再生", "从场景播放");
         self.add("delete_scene", "Delete Scene", "シーンを削除", "删除场景");
+        self.add("scene_captured", "📷 Scene captured at {}", "📷 {} でシーンをキャプチャ", "📷 在 {} 捕获场景");
+        self.add("scene_capture_failed", "Failed to capture scene", "シーンのキャプチャに失敗", "捕获场景失败");
         self.add("selected_count", "{} selected", "{}個選択中", "已选择{}个");
         
         // Options/Settings
@@ -223,7 +229,7 @@ impl I18n {
         self.add("scene_thumbnails_locked", "🔒 Scene Thumbnails", "🔒 シーンサムネイル", "🔒 场景缩略图");
         self.add("premium_feature_available", "This feature is available in Premium version", "この機能はプレミアム版で利用可能です", "此功能在高级版中可用");
         self.add("premium_features", "Premium features:", "プレミアム機能:", "高级功能:");
-        self.add("premium_scene_generation", "• Scene thumbnail generation", "• シーンサムネイル生成", "• 场景缩略图生成");
+        self.add("premium_scene_generation", "• Automatic scene thumbnail generation", "• シーンサムネイル自動生成", "• 场景缩略图生成");
         self.add("premium_star_ratings", "• 1-5 star ratings", "• 1-5星評価", "• 1-5星评分");
         self.add("premium_glsl_shaders", "• GLSL shaders", "• GLSLシェーダー", "• GLSL着色器");
         self.add("premium_gpu_rendering", "• GPU high-quality rendering", "• GPU高品質レンダリング", "• GPU高质量渲染");

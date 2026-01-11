@@ -80,6 +80,7 @@ pub struct VideoPlayerApp {
     pub texture_fail_receiver: Option<Receiver<PathBuf>>, // Receiver for failed image paths
     pub texture_fail_sender: Option<Sender<PathBuf>>, // Sender for failed image paths
     pub thumbnail_clicked_this_frame: bool, // Flag to track if a thumbnail was clicked this frame
+    pub profile_details_expanded: bool, // Whether profile details section is expanded
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -228,6 +229,7 @@ impl Default for VideoPlayerApp {
             texture_fail_receiver: None,
             texture_fail_sender: None,
             thumbnail_clicked_this_frame: false,
+            profile_details_expanded: false,
         }
     }
 }
@@ -858,6 +860,89 @@ impl VideoPlayerApp {
         }
     }
     
+    /// Refresh the video profile: regenerate thumbnail, metadata, and scenes
+    pub fn refresh_video_profile(&mut self, video_id: &str) {
+        let cache_dir = thumbnail::get_cache_dir();
+        
+        // Get video info
+        let video_path = if let Some(video) = self.database.get_video(video_id) {
+            video.path.clone()
+        } else {
+            return;
+        };
+        
+        // Delete existing thumbnail
+        if let Some(video) = self.database.get_video(video_id) {
+            if let Some(ref thumb_path) = video.thumbnail_path {
+                let _ = std::fs::remove_file(thumb_path);
+                self.texture_cache.remove(thumb_path);
+                self.pending_textures.remove(thumb_path);
+                self.failed_textures.remove(thumb_path);
+            }
+            
+            // Delete scene thumbnails
+            let scene_dir = cache_dir.join("scenes").join(&video.id);
+            if scene_dir.exists() {
+                // Remove scene textures from cache
+                for scene in &video.scenes {
+                    self.texture_cache.remove(&scene.thumbnail_path);
+                    self.pending_textures.remove(&scene.thumbnail_path);
+                    self.failed_textures.remove(&scene.thumbnail_path);
+                }
+                let _ = std::fs::remove_dir_all(&scene_dir);
+            }
+        }
+        
+        // Update video profile with fresh data
+        if let Some(video) = self.database.get_video_mut(video_id) {
+            // Regenerate thumbnail
+            video.thumbnail_path = thumbnail::create_video_thumbnail(&video_path, &cache_dir);
+            
+            // Refresh metadata
+            video.duration = scene_detection::get_video_duration(&video_path);
+            video.resolution = scene_detection::get_video_resolution(&video_path);
+            video.frame_rate = scene_detection::get_video_frame_rate(&video_path);
+            
+            // Update file size
+            if let Ok(metadata) = std::fs::metadata(&video_path) {
+                video.file_size = metadata.len();
+            }
+            
+            // Clear scenes so they will be regenerated
+            video.scenes.clear();
+        }
+        
+        // Save database
+        let _ = database::save_database(&self.database);
+    }
+    
+    /// Refresh scene thumbnails for a video: delete existing scenes and regenerate
+    pub fn refresh_scenes(&mut self, video_id: &str) {
+        let cache_dir = thumbnail::get_cache_dir();
+        
+        // Delete existing scene thumbnails
+        if let Some(video) = self.database.get_video(video_id) {
+            let scene_dir = cache_dir.join("scenes").join(&video.id);
+            if scene_dir.exists() {
+                // Remove scene textures from cache
+                for scene in &video.scenes {
+                    self.texture_cache.remove(&scene.thumbnail_path);
+                    self.pending_textures.remove(&scene.thumbnail_path);
+                    self.failed_textures.remove(&scene.thumbnail_path);
+                }
+                let _ = std::fs::remove_dir_all(&scene_dir);
+            }
+        }
+        
+        // Clear scenes and regenerate
+        if let Some(video) = self.database.get_video_mut(video_id) {
+            video.scenes.clear();
+        }
+        
+        // Generate new scenes
+        self.generate_scenes(video_id);
+    }
+    
     pub fn delete_video(&mut self, video_id: &str, delete_cache: bool) {
         // Get video info before deletion
         if let Some(video) = self.database.get_video(video_id) {
@@ -898,6 +983,73 @@ impl VideoPlayerApp {
             
             // Save database
             let _ = database::save_database(&self.database);
+        }
+    }
+    
+    /// Get the path to the scene capture request file
+    fn get_scene_capture_request_path() -> Option<PathBuf> {
+        dirs::data_local_dir().map(|p| p.join("CicadaGallery").join("scene_capture_request.json"))
+    }
+    
+    /// Check for and process scene capture requests from mpv
+    pub fn check_scene_capture_requests(&mut self) {
+        let request_path = match Self::get_scene_capture_request_path() {
+            Some(p) => p,
+            None => return,
+        };
+        
+        if !request_path.exists() {
+            return;
+        }
+        
+        // Read the request file
+        let content = match std::fs::read_to_string(&request_path) {
+            Ok(c) => c,
+            Err(_) => return,
+        };
+        
+        // Delete the file immediately to prevent re-processing
+        let _ = std::fs::remove_file(&request_path);
+        
+        // Parse the JSON request
+        #[derive(serde::Deserialize)]
+        struct CaptureRequest {
+            path: String,
+            timestamp: f64,
+        }
+        
+        let request: CaptureRequest = match serde_json::from_str(&content) {
+            Ok(r) => r,
+            Err(_) => return,
+        };
+        
+        // Find the video in the database by path
+        let video_id = self.database.videos.iter()
+            .find(|v| v.path.to_string_lossy() == request.path)
+            .map(|v| v.id.clone());
+        
+        let video_id = match video_id {
+            Some(id) => id,
+            None => return,
+        };
+        
+        // Add scene at the specified timestamp
+        let cache_dir = thumbnail::get_cache_dir();
+        let (success, timestamp_str, video_title) = {
+            if let Some(video) = self.database.get_video_mut(&video_id) {
+                let success = scene_detection::add_scene_at_timestamp(video, request.timestamp, &cache_dir).is_some();
+                let timestamp_str = scene_detection::format_timestamp(request.timestamp);
+                let video_title = video.title.clone();
+                (success, timestamp_str, video_title)
+            } else {
+                return;
+            }
+        };
+        
+        if success {
+            // Save database
+            let _ = database::save_database(&self.database);
+            eprintln!("[Scene Capture] Added scene at {} for video {}", timestamp_str, video_title);
         }
     }
     
@@ -1225,6 +1377,14 @@ impl VideoPlayerApp {
             
             ui.separator();
             
+            let video_id_for_refresh = video.id.clone();
+            if ui.button(&self.i18n.t("refresh_profile")).clicked() {
+                self.refresh_video_profile(&video_id_for_refresh);
+                ui.close_menu();
+            }
+            
+            ui.separator();
+            
             if ui.button(&self.i18n.t("delete")).clicked() {
                 self.delete_confirm_video = Some(video.id.clone());
                 ui.close_menu();
@@ -1384,6 +1544,9 @@ impl eframe::App for VideoPlayerApp {
         
         // Check for file system changes
         self.check_folder_changes();
+        
+        // Check for scene capture requests from mpv
+        self.check_scene_capture_requests();
         
         // Perform rescan if pending
         if self.pending_rescan {
@@ -1731,6 +1894,7 @@ impl eframe::App for VideoPlayerApp {
                         ui.group(|ui| {
                             ui.set_width(ui.available_width());
                             
+                            // Always visible: Duration, Resolution, Added date
                             // Duration
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("⏱").size(14.0));
@@ -1753,47 +1917,6 @@ impl eframe::App for VideoPlayerApp {
                                 }
                             });
                             
-                            // Frame rate
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new("🎬").size(14.0));
-                                if let Some(fps) = video.frame_rate {
-                                    let fps_text = self.i18n.t("framerate_label").replace("{}", &format!("{:.2}", fps));
-                                    ui.label(&fps_text);
-                                } else {
-                                    ui.label(self.i18n.t("framerate_label").replace("{}", "-"));
-                                }
-                            });
-                            
-                            // File size
-                            ui.horizontal(|ui| {
-                                ui.label(egui::RichText::new("💾").size(14.0));
-                                let size_mb = video.file_size as f64 / 1024.0 / 1024.0;
-                                let size_text = if size_mb >= 1024.0 {
-                                    self.i18n.t("size_gb").replace("{:.2}", &format!("{:.2}", size_mb / 1024.0))
-                                } else {
-                                    self.i18n.t("size_mb").replace("{:.1}", &format!("{:.1}", size_mb))
-                                };
-                                ui.label(&size_text);
-                            });
-                            
-                            // Folder
-                            if let Some(ref folder) = video.folder {
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new("📁").size(14.0));
-                                    let folder_text = self.i18n.t("folder_label").replace("{}", folder);
-                                    ui.label(&folder_text);
-                                });
-                            }
-                            
-                            // Tags
-                            if !video.tags.is_empty() {
-                                ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new("🏷").size(14.0));
-                                    let tags_text = self.i18n.t("tags_label").replace("{}", &video.tags.join(", "));
-                                    ui.label(&tags_text);
-                                });
-                            }
-                            
                             // Added date
                             ui.horizontal(|ui| {
                                 ui.label(egui::RichText::new("📅").size(14.0));
@@ -1801,13 +1924,66 @@ impl eframe::App for VideoPlayerApp {
                                 ui.label(&added_text);
                             });
                             
-                            // Last played
-                            if let Some(last_played) = video.last_played {
+                            // Expandable section for more details
+                            let expand_text = if self.profile_details_expanded {
+                                self.i18n.t("less_details")
+                            } else {
+                                self.i18n.t("more_details")
+                            };
+                            if ui.button(&expand_text).clicked() {
+                                self.profile_details_expanded = !self.profile_details_expanded;
+                            }
+                            
+                            if self.profile_details_expanded {
+                                // Frame rate
                                 ui.horizontal(|ui| {
-                                    ui.label(egui::RichText::new("▶").size(14.0));
-                                    let last_played_text = self.i18n.t("last_played_label").replace("{}", &last_played.format("%Y-%m-%d %H:%M").to_string());
-                                    ui.label(&last_played_text);
+                                    ui.label(egui::RichText::new("🎬").size(14.0));
+                                    if let Some(fps) = video.frame_rate {
+                                        let fps_text = self.i18n.t("framerate_label").replace("{}", &format!("{:.2}", fps));
+                                        ui.label(&fps_text);
+                                    } else {
+                                        ui.label(self.i18n.t("framerate_label").replace("{}", "-"));
+                                    }
                                 });
+                                
+                                // File size
+                                ui.horizontal(|ui| {
+                                    ui.label(egui::RichText::new("💾").size(14.0));
+                                    let size_mb = video.file_size as f64 / 1024.0 / 1024.0;
+                                    let size_text = if size_mb >= 1024.0 {
+                                        self.i18n.t("size_gb").replace("{:.2}", &format!("{:.2}", size_mb / 1024.0))
+                                    } else {
+                                        self.i18n.t("size_mb").replace("{:.1}", &format!("{:.1}", size_mb))
+                                    };
+                                    ui.label(&size_text);
+                                });
+                                
+                                // Folder
+                                if let Some(ref folder) = video.folder {
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("📁").size(14.0));
+                                        let folder_text = self.i18n.t("folder_label").replace("{}", folder);
+                                        ui.label(&folder_text);
+                                    });
+                                }
+                                
+                                // Tags
+                                if !video.tags.is_empty() {
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("🏷").size(14.0));
+                                        let tags_text = self.i18n.t("tags_label").replace("{}", &video.tags.join(", "));
+                                        ui.label(&tags_text);
+                                    });
+                                }
+                                
+                                // Last played
+                                if let Some(last_played) = video.last_played {
+                                    ui.horizontal(|ui| {
+                                        ui.label(egui::RichText::new("▶").size(14.0));
+                                        let last_played_text = self.i18n.t("last_played_label").replace("{}", &last_played.format("%Y-%m-%d %H:%M").to_string());
+                                        ui.label(&last_played_text);
+                                    });
+                                }
                             }
                         });
                         
@@ -1977,7 +2153,15 @@ impl eframe::App for VideoPlayerApp {
                         ui.separator();
                         
                         // Scene thumbnails section
-                        ui.heading(&self.i18n.t("scene_thumbnails"));
+                        ui.horizontal(|ui| {
+                            ui.heading(&self.i18n.t("scene_thumbnails"));
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                let video_id_for_refresh = video_id.clone();
+                                if ui.button(&self.i18n.t("refresh_scenes")).clicked() {
+                                    self.refresh_scenes(&video_id_for_refresh);
+                                }
+                            });
+                        });
                         
                         // Show selection controls if scenes are selected
                         if !self.selected_scenes.is_empty() {
@@ -2022,8 +2206,20 @@ impl eframe::App for VideoPlayerApp {
                                             let thumbnail_size = egui::vec2(180.0, 101.0);
                                             let (rect, response) = ui.allocate_exact_size(thumbnail_size, egui::Sense::click());
                                             
+                                            // Check if this is a manually captured scene
+                                            let is_manual_scene = scene.thumbnail_path.to_string_lossy().contains("scene_manual_");
+                                            
                                             // Only load texture if visible (optimization)
                                             if ui.is_rect_visible(rect) {
+                                                // Draw background for manually captured scenes (purple-pink color)
+                                                if is_manual_scene {
+                                                    ui.painter().rect_filled(
+                                                        rect.expand(3.0),
+                                                        6.0,
+                                                        egui::Color32::from_rgb(180, 100, 160) // Purple-pink
+                                                    );
+                                                }
+                                                
                                                 // Load and display actual thumbnail image
                                                 if let Some(texture) = self.load_image_texture(ctx, &scene.thumbnail_path) {
                                                     // Draw thumbnail
@@ -2035,6 +2231,13 @@ impl eframe::App for VideoPlayerApp {
                                                             rect,
                                                             4.0,
                                                             egui::Stroke::new(3.0, egui::Color32::from_rgb(100, 200, 255))
+                                                        );
+                                                    } else if is_manual_scene {
+                                                        // Always show border for manual scenes
+                                                        ui.painter().rect_stroke(
+                                                            rect,
+                                                            4.0,
+                                                            egui::Stroke::new(2.0, egui::Color32::from_rgb(180, 100, 160))
                                                         );
                                                     }
                                                 }
@@ -3307,6 +3510,14 @@ impl VideoPlayerApp {
                                     if let Err(e) = video_player::show_in_folder(&video.path) {
                                         eprintln!("Show in folder error: {}", e);
                                     }
+                                    ui.close_menu();
+                                }
+                                
+                                ui.separator();
+                                
+                                let video_id_for_refresh = video.id.clone();
+                                if ui.button(&self.i18n.t("refresh_profile")).clicked() {
+                                    self.refresh_video_profile(&video_id_for_refresh);
                                     ui.close_menu();
                                 }
                                 

@@ -318,3 +318,58 @@ pub fn format_timestamp(seconds: f64) -> String {
         format!("{:02}:{:02}", minutes, secs)
     }
 }
+
+/// Add a single scene at a specific timestamp
+/// Returns the created SceneInfo if successful
+pub fn add_scene_at_timestamp(video: &mut VideoFile, timestamp: f64, cache_dir: &Path) -> Option<SceneInfo> {
+    let video_id = &video.id;
+    let scene_dir = cache_dir.join("scenes").join(video_id);
+    
+    if !scene_dir.exists() {
+        std::fs::create_dir_all(&scene_dir).ok()?;
+    }
+    
+    // Generate unique filename for the scene
+    let scene_index = video.scenes.len();
+    let thumbnail_path = scene_dir.join(format!("scene_manual_{:03}_{}.jpg", scene_index, (timestamp * 1000.0) as u64));
+    
+    // Use FFmpeg to extract the frame at the specified timestamp
+    let ffmpeg_path = get_ffmpeg_path();
+    let mut cmd = Command::new(&ffmpeg_path);
+    cmd.args(&[
+        "-ss", &timestamp.to_string(),
+        "-i", video.path.to_str()?,
+        "-vframes", "1",
+        "-q:v", "2",
+        "-vf", "scale='min(320,iw)':-1",
+        "-y",
+        thumbnail_path.to_str()?,
+    ]);
+    
+    // Hide console window on Windows
+    #[cfg(target_os = "windows")]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    
+    let _ = cmd.output();
+    
+    if thumbnail_path.exists() {
+        let scene = SceneInfo {
+            timestamp,
+            thumbnail_path: thumbnail_path.clone(),
+        };
+        
+        // Insert scene in sorted order by timestamp
+        let insert_pos = video.scenes.iter()
+            .position(|s| s.timestamp > timestamp)
+            .unwrap_or(video.scenes.len());
+        video.scenes.insert(insert_pos, scene.clone());
+        
+        Some(scene)
+    } else {
+        None
+    }
+}

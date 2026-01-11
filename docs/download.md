@@ -65,7 +65,7 @@ lang: ja
 
 **プレミアムライセンスは Gumroad を通じて販売しています。**
 
-1. [Gumroadの商品ページ](https://6953876869541.gumroad.com/l/jmjty)からプレミアムライセンスを購入します  
+1. [Gumroadの商品ページ](https://tetdarth.gumroad.com/l/jmjty)からプレミアムライセンスを購入します  
 2. 購入完了後、Gumroad から届くメールに記載されている **Order ID** をコピーします  
 3. [ライセンス発行ページ](https://tetdarth.github.io/CicadaGallery/license)で  
    Order ID と購入時のメールアドレスを入力します  
