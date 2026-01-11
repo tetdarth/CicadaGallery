@@ -8,6 +8,8 @@ mpv/
 ffmpeg/
 image/
 dist/
+mpv.log
+*.lnk
 
 # Build documentation (private)
 BUILD.md

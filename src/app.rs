@@ -918,56 +918,17 @@ impl VideoPlayerApp {
     
     /// Refresh scene thumbnails for a video: delete existing scenes and regenerate
     pub fn refresh_scenes(&mut self, video_id: &str) {
-        let cache_dir = thumbnail::get_cache_dir();
-        
-        // Collect manual scenes to preserve (scene_manual_ prefix)
-        let manual_scenes: Vec<crate::models::SceneInfo> = if let Some(video) = self.database.get_video(video_id) {
-            video.scenes.iter()
-                .filter(|scene| {
-                    // Check if the thumbnail filename starts with "scene_manual_"
-                    if let Some(filename) = std::path::Path::new(&scene.thumbnail_path).file_name() {
-                        filename.to_string_lossy().starts_with("scene_manual_")
-                    } else {
-                        false
-                    }
-                })
-                .cloned()
-                .collect()
-        } else {
-            Vec::new()
-        };
-        
-        // Delete existing auto-detected scene thumbnails (not manual ones)
+        // Just clear texture caches to force reload from disk
+        // Does NOT regenerate scenes
         if let Some(video) = self.database.get_video(video_id) {
-            let scene_dir = cache_dir.join("scenes").join(&video.id);
-            if scene_dir.exists() {
-                // Remove only auto-detected scene textures from cache and disk
-                for scene in &video.scenes {
-                    let path = std::path::Path::new(&scene.thumbnail_path);
-                    if let Some(filename) = path.file_name() {
-                        if !filename.to_string_lossy().starts_with("scene_manual_") {
-                            // Auto-detected scene - remove it
-                            self.texture_cache.remove(&scene.thumbnail_path);
-                            self.pending_textures.remove(&scene.thumbnail_path);
-                            self.failed_textures.remove(&scene.thumbnail_path);
-                            let _ = std::fs::remove_file(&scene.thumbnail_path);
-                        }
-                    }
-                }
+            for scene in &video.scenes {
+                self.texture_cache.remove(&scene.thumbnail_path);
+                self.pending_textures.remove(&scene.thumbnail_path);
+                self.failed_textures.remove(&scene.thumbnail_path);
             }
         }
-        
-        // Clear scenes and restore manual scenes
-        if let Some(video) = self.database.get_video_mut(video_id) {
-            video.scenes.clear();
-            // Restore manual scenes
-            video.scenes = manual_scenes;
-        }
-        
-        // Generate new auto-detected scenes
-        self.generate_scenes(video_id);
     }
-    
+
     pub fn delete_video(&mut self, video_id: &str, delete_cache: bool) {
         // Get video info before deletion
         if let Some(video) = self.database.get_video(video_id) {
