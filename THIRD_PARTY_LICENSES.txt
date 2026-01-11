@@ -25,3 +25,39 @@ A copy of the LGPL v2.1 license can be found at:
 https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
 
 ================================================================================
+FFmpeg - A complete, cross-platform solution to record, convert and stream audio and video
+================================================================================
+
+Website: https://ffmpeg.org/
+Source Code: https://github.com/FFmpeg/FFmpeg
+License: LGPL v2.1 or later (with some optional components under GPL)
+
+FFmpeg is a trademark of Fabrice Bellard.
+
+FFmpeg is distributed under the terms of the GNU Lesser General Public License 
+version 2.1 or later (LGPLv2.1+). Some optional components are licensed under 
+the GNU General Public License version 2 or later (GPLv2+).
+
+This application uses FFmpeg binaries compiled with LGPL-compatible components only.
+The binaries are used for:
+- Video thumbnail generation
+- Scene detection
+- Video metadata extraction (via ffprobe)
+
+The complete source code of FFmpeg is available at:
+https://github.com/FFmpeg/FFmpeg
+
+We distribute unmodified FFmpeg binaries from the official Windows builds
+available at: https://www.gyan.dev/ffmpeg/builds/
+
+The following FFmpeg components are included:
+- ffmpeg.exe - Media converter and processor
+- ffprobe.exe - Media information analyzer
+
+A copy of the LGPL v2.1 license can be found at:
+https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html
+
+For FFmpeg licensing details, see:
+https://ffmpeg.org/legal.html
+
+================================================================================
