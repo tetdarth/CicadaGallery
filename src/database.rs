@@ -579,16 +579,71 @@ pub fn load_settings() -> Result<AppSettings, Box<dyn std::error::Error>> {
     Ok(settings)
 }
 
-/// Get backup database file path (with generation number)
-pub fn get_backup_path_with_generation(generation: u8) -> PathBuf {
+/// Get backup directory path
+pub fn get_backup_dir() -> PathBuf {
     let mut path = get_database_dir();
-    path.push(format!("database_backup_{}.db", generation));
+    path.push("backups");
+    
+    // Create directory if it doesn't exist
+    if !path.exists() {
+        let _ = fs::create_dir_all(&path);
+    }
+    
     path
 }
 
-/// Get backup database file path (latest backup = generation 1)
-pub fn get_backup_path() -> PathBuf {
-    get_backup_path_with_generation(1)
+/// Get backup database file path with timestamp
+pub fn get_backup_path_with_timestamp(timestamp: &str) -> PathBuf {
+    let mut path = get_backup_dir();
+    path.push(format!("database_backup_{}.db", timestamp));
+    path
+}
+
+/// Get list of all backup files sorted by date (newest first)
+pub fn list_backups() -> Result<Vec<(PathBuf, String)>, Box<dyn std::error::Error>> {
+    let backup_dir = get_backup_dir();
+    let mut backups: Vec<(PathBuf, String)> = Vec::new();
+    
+    if backup_dir.exists() {
+        for entry in fs::read_dir(&backup_dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if let Some(ext) = path.extension() {
+                if ext == "db" {
+                    if let Some(filename) = path.file_stem() {
+                        let name = filename.to_string_lossy();
+                        if name.starts_with("database_backup_") {
+                            // Extract timestamp from filename
+                            let timestamp = name.trim_start_matches("database_backup_").to_string();
+                            backups.push((path, timestamp));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    
+    // Sort by timestamp (newest first)
+    backups.sort_by(|a, b| b.1.cmp(&a.1));
+    
+    Ok(backups)
+}
+
+/// Remove old backups, keeping only the latest N
+fn cleanup_old_backups(keep_count: usize) -> Result<usize, Box<dyn std::error::Error>> {
+    let backups = list_backups()?;
+    let mut removed = 0;
+    
+    if backups.len() > keep_count {
+        for (path, _) in backups.into_iter().skip(keep_count) {
+            if fs::remove_file(&path).is_ok() {
+                eprintln!("[Backup] Removed old backup: {:?}", path);
+                removed += 1;
+            }
+        }
+    }
+    
+    Ok(removed)
 }
 
 /// Check if backup is needed (every 3 days)
@@ -605,53 +660,72 @@ pub fn should_backup(settings: &AppSettings) -> bool {
     true
 }
 
-/// Rotate backup files (keep up to 3 generations)
-/// Generation 1 is the newest, generation 3 is the oldest
-fn rotate_backups() -> Result<(), Box<dyn std::error::Error>> {
-    // Delete generation 3 (oldest) if exists
-    let backup_3 = get_backup_path_with_generation(3);
-    if backup_3.exists() {
-        fs::remove_file(&backup_3)?;
-        eprintln!("[Backup] Removed oldest backup (generation 3)");
-    }
-    
-    // Rename generation 2 -> 3
-    let backup_2 = get_backup_path_with_generation(2);
-    if backup_2.exists() {
-        fs::rename(&backup_2, &backup_3)?;
-        eprintln!("[Backup] Rotated generation 2 -> 3");
-    }
-    
-    // Rename generation 1 -> 2
-    let backup_1 = get_backup_path_with_generation(1);
-    if backup_1.exists() {
-        fs::rename(&backup_1, &backup_2)?;
-        eprintln!("[Backup] Rotated generation 1 -> 2");
-    }
-    
-    Ok(())
-}
-
-/// Create a backup of the database (with 3-generation rotation)
+/// Create a backup of the database with timestamp filename
 pub fn create_backup() -> Result<PathBuf, Box<dyn std::error::Error>> {
     let source_path = get_database_path();
     
     if source_path.exists() {
-        // Rotate existing backups first
-        rotate_backups()?;
+        // Create timestamp for filename (format: YYYYMMDD_HHMMSS)
+        let now = Utc::now();
+        let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
         
-        // Create new backup as generation 1
-        let backup_path = get_backup_path_with_generation(1);
+        let backup_path = get_backup_path_with_timestamp(&timestamp);
         let conn = open_connection()?;
         let backup_path_str = backup_path.to_string_lossy();
         
         conn.execute(&format!("VACUUM INTO '{}'", backup_path_str), [])?;
         eprintln!("[Backup] Database backed up to {:?}", backup_path);
         
+        // Cleanup old backups (keep only 3)
+        let _ = cleanup_old_backups(3);
+        
         return Ok(backup_path);
     }
     
-    Ok(get_backup_path())
+    Err("Source database does not exist".into())
+}
+
+/// Restore database from a backup file
+pub fn restore_from_backup(backup_path: &PathBuf) -> Result<(), Box<dyn std::error::Error>> {
+    if !backup_path.exists() {
+        return Err("Backup file does not exist".into());
+    }
+    
+    let db_path = get_database_path();
+    
+    // Create a safety backup of current database before restore
+    if db_path.exists() {
+        let now = Utc::now();
+        let timestamp = now.format("%Y%m%d_%H%M%S").to_string();
+        let safety_backup = get_backup_path_with_timestamp(&format!("{}_before_restore", timestamp));
+        
+        // Close any existing connections by opening a new one and using VACUUM INTO
+        let conn = open_connection()?;
+        conn.execute(&format!("VACUUM INTO '{}'", safety_backup.to_string_lossy()), [])?;
+        eprintln!("[Restore] Safety backup created at {:?}", safety_backup);
+    }
+    
+    // Copy backup to database location
+    fs::copy(backup_path, &db_path)?;
+    eprintln!("[Restore] Database restored from {:?}", backup_path);
+    
+    Ok(())
+}
+
+/// Get formatted display name for backup timestamp
+pub fn format_backup_timestamp(timestamp: &str) -> String {
+    // Parse YYYYMMDD_HHMMSS format
+    if timestamp.len() >= 15 {
+        let year = &timestamp[0..4];
+        let month = &timestamp[4..6];
+        let day = &timestamp[6..8];
+        let hour = &timestamp[9..11];
+        let min = &timestamp[11..13];
+        let sec = &timestamp[13..15];
+        format!("{}/{}/{} {}:{}:{}", year, month, day, hour, min, sec)
+    } else {
+        timestamp.to_string()
+    }
 }
 
 /// Perform backup if needed and update settings

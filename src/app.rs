@@ -27,6 +27,7 @@ pub struct VideoPlayerApp {
     pub tag_filter_mode: FilterMode, // AND or OR mode for tag filter (premium feature)
     pub min_rating_filter: u8, // 0 = show all, 1-5 = show videos with rating >= this value
     pub show_options_window: bool,
+    pub selected_options_tab: OptionsTab, // Currently selected options tab
     pub show_folder_management_window: bool, // Show folder management window
     pub show_tag_management_window: bool, // Show tag management window
     pub show_shader_management_window: bool, // Show shader management window
@@ -81,6 +82,10 @@ pub struct VideoPlayerApp {
     pub texture_fail_sender: Option<Sender<PathBuf>>, // Sender for failed image paths
     pub thumbnail_clicked_this_frame: bool, // Flag to track if a thumbnail was clicked this frame
     pub profile_details_expanded: bool, // Whether profile details section is expanded
+    // Backup management
+    pub show_backup_restore_window: bool, // Show backup restore selection window
+    pub available_backups: Vec<(PathBuf, String)>, // List of available backups (path, timestamp)
+    pub backup_status_message: Option<String>, // Backup operation status message
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -106,6 +111,14 @@ pub enum SortOrder {
 pub enum FilterMode {
     Or,  // Any of the selected (OR)
     And, // All of the selected (AND)
+}
+
+#[derive(Debug, Clone, PartialEq, Copy)]
+pub enum OptionsTab {
+    Display,   // 表示
+    Player,    // プレイヤー
+    Data,      // データ管理
+    License,   // ライセンス
 }
 
 impl Default for VideoPlayerApp {
@@ -183,6 +196,7 @@ impl Default for VideoPlayerApp {
             tag_filter_mode: FilterMode::Or,
             min_rating_filter: 0,
             show_options_window: false,
+            selected_options_tab: OptionsTab::Display,
             show_folder_management_window: false,
             show_tag_management_window: false,
             show_shader_management_window: false,
@@ -237,6 +251,10 @@ impl Default for VideoPlayerApp {
             texture_fail_sender: None,
             thumbnail_clicked_this_frame: false,
             profile_details_expanded: false,
+            // Backup management
+            show_backup_restore_window: false,
+            available_backups: Vec::new(),
+            backup_status_message: None,
         }
     }
 }
@@ -2496,199 +2514,357 @@ impl eframe::App for VideoPlayerApp {
             egui::Window::new(&self.i18n.t("options"))
                 .open(&mut self.show_options_window)
                 .resizable(true)
-                .default_width(400.0)
+                .default_width(450.0)
+                .default_height(400.0)
                 .show(ctx, |ui| {
-                    ui.heading(&self.i18n.t("display_settings"));
-                    ui.separator();
-                    
+                    // Tab bar
                     ui.horizontal(|ui| {
-                        ui.label(&self.i18n.t("thumbnail_scale"));
-                        if ui.add(egui::Slider::new(&mut self.thumbnail_scale, 0.5..=3.0)
-                            .text("Scale")
-                            .suffix("x")).changed() {
-                            settings_changed = true;
+                        if ui.selectable_label(self.selected_options_tab == OptionsTab::Display, &self.i18n.t("options_display")).clicked() {
+                            self.selected_options_tab = OptionsTab::Display;
+                        }
+                        ui.separator();
+                        if ui.selectable_label(self.selected_options_tab == OptionsTab::Player, &self.i18n.t("options_player")).clicked() {
+                            self.selected_options_tab = OptionsTab::Player;
+                        }
+                        ui.separator();
+                        if ui.selectable_label(self.selected_options_tab == OptionsTab::Data, &self.i18n.t("options_data")).clicked() {
+                            self.selected_options_tab = OptionsTab::Data;
+                        }
+                        ui.separator();
+                        if ui.selectable_label(self.selected_options_tab == OptionsTab::License, &self.i18n.t("options_license")).clicked() {
+                            self.selected_options_tab = OptionsTab::License;
                         }
                     });
-                    
-                    ui.label(format!("Current scale: {:.0}%", self.thumbnail_scale * 100.0));
-                    
                     ui.separator();
                     
-                    if ui.checkbox(&mut self.show_full_filename, &self.i18n.t("show_full_filename")).changed() {
-                        settings_changed = true;
-                    }
-                    if ui.checkbox(&mut self.show_tags_in_grid, &self.i18n.t("show_tags_in_grid")).changed() {
-                        settings_changed = true;
-                    }
-                    
-                    ui.separator();
-                    ui.heading(&self.i18n.t("theme"));
-                    ui.separator();
-                    
-                    if ui.checkbox(&mut self.dark_mode, &self.i18n.t("dark_mode")).changed() {
-                        settings_changed = true;
-                    }
-                    
-                    ui.separator();
-                    
-                    ui.label(&self.i18n.t("language"));
-                    let current_language = self.i18n.get_language();
-                    for lang in Language::all() {
-                        if ui.radio(current_language == lang, lang.name()).clicked() {
-                            self.i18n.set_language(lang);
-                            settings_changed = true;
-                        }
-                    }
-                    
-                    ui.separator();
-                    ui.heading(&self.i18n.t("player_settings"));
-                    ui.separator();
-                    
-                    if ui.checkbox(&mut self.mpv_always_on_top, &self.i18n.t("always_on_top")).changed() {
-                        settings_changed = true;
-                    }
-                    
-                    // GPU settings - only show for premium users
-                    if self.is_premium {
-                        ui.add_space(5.0);
-                        
-                        if ui.checkbox(&mut self.use_gpu_hq, &self.i18n.t("use_gpu_hq")).changed() {
-                            settings_changed = true;
-                        }
-                        ui.label("  GPU high-quality mode uses advanced shaders");
-                        
-                        ui.separator();
-                        
-                        if ui.checkbox(&mut self.use_custom_shaders, &self.i18n.t("use_custom_shaders")).changed() {
-                            settings_changed = true;
-                        }
-                        
-                        // Button to open shader management window
-                        if self.use_custom_shaders {
-                            if ui.button(&self.i18n.t("manage_shaders")).clicked() {
-                                self.show_shader_management_window = true;
-                            }
-                        } else {
-                            ui.label("  Place .glsl shader files in mpv/glsl_shaders");
-                        }
-                    }
-                    
-                    ui.separator();
-                    ui.heading(&self.i18n.t("management"));
-                    ui.separator();
-                    
-                    // Button to open folder management window
-                    if ui.button(&self.i18n.t("manage_folders")).clicked() {
-                        self.show_folder_management_window = true;
-                    }
-                    
-                    // Button to open tag management window
-                    if ui.button(&self.i18n.t("manage_tags")).clicked() {
-                        self.show_tag_management_window = true;
-                    }
-                    
-                    // Button to open/show MPV shortcuts panel
-                    if ui.button("Show MPV Shortcuts").clicked() {
-                        self.mpv_shortcuts_open = true;
-                        settings_changed = true;
-                    }
-                    
-                    ui.separator();
-                    
-                    if ui.button("Reset to Default").clicked() {
-                        self.thumbnail_scale = 1.0;
-                        self.mpv_always_on_top = true;
-                        self.show_full_filename = false;
-                        self.show_tags_in_grid = true;
-                        self.dark_mode = false;
-                        self.use_gpu_hq = false;
-                        self.use_custom_shaders = false;
-                        self.selected_shader = None;
-                        settings_changed = true;
-                    }
-                    
-                    // License section
-                    ui.separator();
-                    ui.heading("Premium License");
-                    ui.separator();
-                    
-                    if let Some(ref license) = self.current_license {
-                        // Show license info
-                        ui.horizontal(|ui| {
-                            ui.label(&self.i18n.t("issued_to"));
-                            ui.label(&license.info.issued_to);
-                        });
-                        
-                        ui.horizontal(|ui| {
-                            ui.label(&self.i18n.t("expires"));
-                            let expires_text = license.info.expires_at
-                                .map(|ts| license::format_timestamp(ts))
-                                .unwrap_or_else(|| self.i18n.t("never_expires"));
-                            ui.label(&expires_text);
-                        });
-                        
-                        ui.horizontal(|ui| {
-                            ui.label(&self.i18n.t("license_status"));
-                            if license.is_expired {
-                                ui.label(egui::RichText::new("❌ Expired").color(egui::Color32::RED));
-                            } else if license.is_valid {
-                                ui.label(egui::RichText::new("✅ Active").color(egui::Color32::GREEN));
-                            } else {
-                                ui.label(egui::RichText::new("❌ Invalid").color(egui::Color32::RED));
-                            }
-                        });
-                        
-                        ui.add_space(5.0);
-                        if ui.button(&self.i18n.t("enter_license_key")).clicked() {
-                            self.show_license_window = true;
-                        }
-                    } else {
-                        // Premium promotion for free users
-                        ui.label(egui::RichText::new(&self.i18n.t("premium_benefits_title")).strong());
-                        ui.add_space(5.0);
-                        
-                        ui.label(&self.i18n.t("premium_benefit_1")); // 5つ星レーティング
-                        ui.label(&self.i18n.t("premium_benefit_2")); // 複数タグ/フォルダ選択
-                        ui.label(&self.i18n.t("premium_benefit_3")); // GPU高画質レンダリング
-                        ui.label(&self.i18n.t("premium_benefit_4")); // カスタムシェーダー
-                        ui.label(&self.i18n.t("premium_benefit_5")); // 無制限の動画プロファイル
-                        
-                        ui.add_space(10.0);
-                        
-                        ui.horizontal(|ui| {
-                            if ui.button(&self.i18n.t("purchase_premium")).clicked() {
-                                // Open purchase page using platform-specific command
-                                #[cfg(target_os = "windows")]
-                                {
-                                    let _ = std::process::Command::new("cmd")
-                                        .args(["/C", "start", "", "https://tetdarth.gumroad.com/l/jmjty"])
-                                        .spawn();
+                    egui::ScrollArea::vertical().show(ui, |ui| {
+                        match self.selected_options_tab {
+                            OptionsTab::Display => {
+                                // Display settings tab
+                                ui.heading(&self.i18n.t("display_settings"));
+                                ui.add_space(5.0);
+                                
+                                ui.horizontal(|ui| {
+                                    ui.label(&self.i18n.t("thumbnail_scale"));
+                                    if ui.add(egui::Slider::new(&mut self.thumbnail_scale, 0.5..=3.0)
+                                        .suffix("x")).changed() {
+                                        settings_changed = true;
+                                    }
+                                });
+                                
+                                ui.label(format!("Current scale: {:.0}%", self.thumbnail_scale * 100.0));
+                                
+                                ui.add_space(10.0);
+                                
+                                if ui.checkbox(&mut self.show_full_filename, &self.i18n.t("show_full_filename")).changed() {
+                                    settings_changed = true;
                                 }
-                                #[cfg(target_os = "macos")]
-                                {
-                                    let _ = std::process::Command::new("open")
-                                        .arg("https://tetdarth.gumroad.com/l/jmjty")
-                                        .spawn();
+                                if ui.checkbox(&mut self.show_tags_in_grid, &self.i18n.t("show_tags_in_grid")).changed() {
+                                    settings_changed = true;
                                 }
-                                #[cfg(target_os = "linux")]
-                                {
-                                    let _ = std::process::Command::new("xdg-open")
-                                        .arg("https://tetdarth.gumroad.com/l/jmjty")
-                                        .spawn();
+                                
+                                ui.add_space(10.0);
+                                ui.separator();
+                                ui.heading(&self.i18n.t("theme"));
+                                ui.add_space(5.0);
+                                
+                                if ui.checkbox(&mut self.dark_mode, &self.i18n.t("dark_mode")).changed() {
+                                    settings_changed = true;
+                                }
+                                
+                                ui.add_space(10.0);
+                                ui.separator();
+                                ui.label(&self.i18n.t("language"));
+                                let current_language = self.i18n.get_language();
+                                for lang in Language::all() {
+                                    if ui.radio(current_language == lang, lang.name()).clicked() {
+                                        self.i18n.set_language(lang);
+                                        settings_changed = true;
+                                    }
                                 }
                             }
                             
-                            if ui.button(&self.i18n.t("enter_license_key")).clicked() {
-                                self.show_license_window = true;
+                            OptionsTab::Player => {
+                                // Player settings tab
+                                ui.heading(&self.i18n.t("player_settings"));
+                                ui.add_space(5.0);
+                                
+                                if ui.checkbox(&mut self.mpv_always_on_top, &self.i18n.t("always_on_top")).changed() {
+                                    settings_changed = true;
+                                }
+                                
+                                // GPU settings - only show for premium users
+                                if self.is_premium {
+                                    ui.add_space(10.0);
+                                    ui.separator();
+                                    ui.label("GPU Rendering");
+                                    ui.add_space(5.0);
+                                    
+                                    if ui.checkbox(&mut self.use_gpu_hq, &self.i18n.t("use_gpu_hq")).changed() {
+                                        settings_changed = true;
+                                    }
+                                    ui.label("  GPU high-quality mode uses advanced shaders");
+                                    
+                                    ui.add_space(10.0);
+                                    
+                                    if ui.checkbox(&mut self.use_custom_shaders, &self.i18n.t("use_custom_shaders")).changed() {
+                                        settings_changed = true;
+                                    }
+                                    
+                                    // Button to open shader management window
+                                    if self.use_custom_shaders {
+                                        if ui.button(&self.i18n.t("manage_shaders")).clicked() {
+                                            self.show_shader_management_window = true;
+                                        }
+                                    } else {
+                                        ui.label("  Place .glsl shader files in mpv/glsl_shaders");
+                                    }
+                                }
+                                
+                                ui.add_space(10.0);
+                                ui.separator();
+                                
+                                // Button to open/show MPV shortcuts panel
+                                if ui.button("Show MPV Shortcuts").clicked() {
+                                    self.mpv_shortcuts_open = true;
+                                    settings_changed = true;
+                                }
                             }
-                        });
-                    }
+                            
+                            OptionsTab::Data => {
+                                // Data management tab
+                                ui.heading(&self.i18n.t("management"));
+                                ui.add_space(5.0);
+                                
+                                // Button to open folder management window
+                                if ui.button(&self.i18n.t("manage_folders")).clicked() {
+                                    self.show_folder_management_window = true;
+                                }
+                                
+                                ui.add_space(5.0);
+                                
+                                // Button to open tag management window
+                                if ui.button(&self.i18n.t("manage_tags")).clicked() {
+                                    self.show_tag_management_window = true;
+                                }
+                                
+                                ui.add_space(15.0);
+                                ui.separator();
+                                ui.heading(&self.i18n.t("backup"));
+                                ui.add_space(5.0);
+                                
+                                // Show last backup date
+                                if let Ok(settings) = database::load_settings() {
+                                    if let Some(ref last_backup) = settings.last_backup_date {
+                                        if let Ok(dt) = chrono::DateTime::parse_from_rfc3339(last_backup) {
+                                            // Convert to local timezone
+                                            let local_dt = dt.with_timezone(&chrono::Local);
+                                            let formatted = local_dt.format("%Y/%m/%d %H:%M:%S").to_string();
+                                            ui.label(format!("{}: {}", self.i18n.t("last_backup"), formatted));
+                                            ui.add_space(5.0);
+                                        }
+                                    }
+                                }
+                                
+                                // Create backup button
+                                if ui.button(&self.i18n.t("create_backup")).clicked() {
+                                    match database::create_backup() {
+                                        Ok(path) => {
+                                            // Update last backup date in settings
+                                            if let Ok(mut settings) = database::load_settings() {
+                                                settings.last_backup_date = Some(chrono::Utc::now().to_rfc3339());
+                                                let _ = database::save_settings(&settings);
+                                            }
+                                            self.backup_status_message = Some(format!("{}: {:?}", self.i18n.t("backup_created"), path));
+                                        }
+                                        Err(e) => {
+                                            self.backup_status_message = Some(format!("{}: {}", self.i18n.t("backup_failed"), e));
+                                        }
+                                    }
+                                }
+                                
+                                ui.add_space(5.0);
+                                
+                                // Restore from backup button
+                                if ui.button(&self.i18n.t("restore_from_backup")).clicked() {
+                                    // Load available backups
+                                    match database::list_backups() {
+                                        Ok(backups) => {
+                                            self.available_backups = backups;
+                                            self.show_backup_restore_window = true;
+                                        }
+                                        Err(e) => {
+                                            self.backup_status_message = Some(format!("{}: {}", self.i18n.t("restore_failed"), e));
+                                        }
+                                    }
+                                }
+                                
+                                // Show backup status message
+                                if let Some(ref msg) = self.backup_status_message {
+                                    ui.add_space(5.0);
+                                    ui.label(msg);
+                                }
+                                
+                                ui.add_space(15.0);
+                                ui.separator();
+                                ui.heading(&self.i18n.t("reset_to_default"));
+                                ui.add_space(5.0);
+                                
+                                if ui.button(&self.i18n.t("reset_to_default")).clicked() {
+                                    self.thumbnail_scale = 1.0;
+                                    self.mpv_always_on_top = true;
+                                    self.show_full_filename = false;
+                                    self.show_tags_in_grid = true;
+                                    self.dark_mode = false;
+                                    self.use_gpu_hq = false;
+                                    self.use_custom_shaders = false;
+                                    self.selected_shader = None;
+                                    settings_changed = true;
+                                }
+                            }
+                            
+                            OptionsTab::License => {
+                                // License section
+                                ui.heading("Premium License");
+                                ui.add_space(5.0);
+                                
+                                if let Some(ref license) = self.current_license {
+                                    // Show license info
+                                    ui.horizontal(|ui| {
+                                        ui.label(&self.i18n.t("issued_to"));
+                                        ui.label(&license.info.issued_to);
+                                    });
+                                    
+                                    ui.horizontal(|ui| {
+                                        ui.label(&self.i18n.t("expires"));
+                                        let expires_text = license.info.expires_at
+                                            .map(|ts| license::format_timestamp(ts))
+                                            .unwrap_or_else(|| self.i18n.t("never_expires"));
+                                        ui.label(&expires_text);
+                                    });
+                                    
+                                    ui.horizontal(|ui| {
+                                        ui.label(&self.i18n.t("license_status"));
+                                        if license.is_expired {
+                                            ui.label(egui::RichText::new("❌ Expired").color(egui::Color32::RED));
+                                        } else if license.is_valid {
+                                            ui.label(egui::RichText::new("✅ Active").color(egui::Color32::GREEN));
+                                        } else {
+                                            ui.label(egui::RichText::new("❌ Invalid").color(egui::Color32::RED));
+                                        }
+                                    });
+                                    
+                                    ui.add_space(10.0);
+                                    if ui.button(&self.i18n.t("enter_license_key")).clicked() {
+                                        self.show_license_window = true;
+                                    }
+                                } else {
+                                    // Premium promotion for free users
+                                    ui.label(egui::RichText::new(&self.i18n.t("premium_benefits_title")).strong());
+                                    ui.add_space(5.0);
+                                    
+                                    ui.label(&self.i18n.t("premium_benefit_1")); // 5つ星レーティング
+                                    ui.label(&self.i18n.t("premium_benefit_2")); // 複数タグ/フォルダ選択
+                                    ui.label(&self.i18n.t("premium_benefit_3")); // GPU高画質レンダリング
+                                    ui.label(&self.i18n.t("premium_benefit_4")); // カスタムシェーダー
+                                    ui.label(&self.i18n.t("premium_benefit_5")); // 無制限の動画プロファイル
+                                    
+                                    ui.add_space(15.0);
+                                    
+                                    ui.horizontal(|ui| {
+                                        if ui.button(&self.i18n.t("purchase_premium")).clicked() {
+                                            // Open purchase page using platform-specific command
+                                            #[cfg(target_os = "windows")]
+                                            {
+                                                let _ = std::process::Command::new("cmd")
+                                                    .args(["/C", "start", "", "https://tetdarth.gumroad.com/l/jmjty"])
+                                                    .spawn();
+                                            }
+                                            #[cfg(target_os = "macos")]
+                                            {
+                                                let _ = std::process::Command::new("open")
+                                                    .arg("https://tetdarth.gumroad.com/l/jmjty")
+                                                    .spawn();
+                                            }
+                                            #[cfg(target_os = "linux")]
+                                            {
+                                                let _ = std::process::Command::new("xdg-open")
+                                                    .arg("https://tetdarth.gumroad.com/l/jmjty")
+                                                    .spawn();
+                                            }
+                                        }
+                                        
+                                        if ui.button(&self.i18n.t("enter_license_key")).clicked() {
+                                            self.show_license_window = true;
+                                        }
+                                    });
+                                }
+                            }
+                        }
+                    });
                 });
         }
         
         // Save settings when changed or when options window is closed
         if settings_changed || (options_window_was_open && !self.show_options_window) {
             self.save_settings();
+        }
+        
+        // Backup Restore Window
+        if self.show_backup_restore_window {
+            let select_backup_title = self.i18n.t("select_backup");
+            let restore_warning = self.i18n.t("restore_warning");
+            let no_backups_text = self.i18n.t("no_backups_available");
+            let restore_success_text = self.i18n.t("restore_success");
+            let restore_failed_text = self.i18n.t("restore_failed");
+            
+            let mut window_open = self.show_backup_restore_window;
+            let mut restore_path: Option<PathBuf> = None;
+            
+            egui::Window::new(&select_backup_title)
+                .open(&mut window_open)
+                .resizable(true)
+                .default_width(400.0)
+                .show(ctx, |ui| {
+                    ui.label(egui::RichText::new(&restore_warning).color(egui::Color32::YELLOW));
+                    ui.add_space(10.0);
+                    
+                    if self.available_backups.is_empty() {
+                        ui.label(&no_backups_text);
+                    } else {
+                        egui::ScrollArea::vertical().max_height(300.0).show(ui, |ui| {
+                            for (path, timestamp) in &self.available_backups {
+                                let display_name = database::format_backup_timestamp(timestamp);
+                                ui.horizontal(|ui| {
+                                    ui.label(&display_name);
+                                    if ui.button("Restore").clicked() {
+                                        restore_path = Some(path.clone());
+                                    }
+                                });
+                                ui.separator();
+                            }
+                        });
+                    }
+                });
+            
+            self.show_backup_restore_window = window_open;
+            
+            // Handle restore action
+            if let Some(path) = restore_path {
+                match database::restore_from_backup(&path) {
+                    Ok(()) => {
+                        self.backup_status_message = Some(restore_success_text);
+                        self.show_backup_restore_window = false;
+                        // Reload database
+                        if let Ok(new_db) = database::load_database() {
+                            self.database = new_db;
+                        }
+                    }
+                    Err(e) => {
+                        self.backup_status_message = Some(format!("{}: {}", restore_failed_text, e));
+                    }
+                }
+            }
         }
         
         // Folder Management Window

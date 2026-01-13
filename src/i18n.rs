@@ -171,6 +171,23 @@ impl I18n {
         
         // Options/Settings
         self.add("display_settings", "Display Settings", "表示設定", "显示设置");
+        self.add("options_display", "Display", "表示", "显示");
+        self.add("options_player", "Player", "プレイヤー", "播放器");
+        self.add("options_data", "Data", "データ", "数据");
+        self.add("options_license", "License", "ライセンス", "许可证");
+        self.add("reset_to_default", "Reset to Default", "デフォルトに戻す", "恢复默认");
+        self.add("management", "Management", "管理", "管理");
+        self.add("backup", "Backup", "バックアップ", "备份");
+        self.add("last_backup", "Last backup", "前回のバックアップ", "上次备份");
+        self.add("create_backup", "Create Backup", "バックアップを作成", "创建备份");
+        self.add("restore_from_backup", "Restore from Backup", "バックアップから復元", "从备份恢复");
+        self.add("backup_created", "Backup created successfully", "バックアップを作成しました", "备份创建成功");
+        self.add("backup_failed", "Failed to create backup", "バックアップの作成に失敗しました", "备份创建失败");
+        self.add("restore_success", "Database restored successfully. Please restart the application.", "データベースを復元しました。アプリを再起動してください。", "数据库恢复成功。请重新启动应用程序。");
+        self.add("restore_failed", "Failed to restore from backup", "バックアップからの復元に失敗しました", "从备份恢复失败");
+        self.add("select_backup", "Select Backup to Restore", "復元するバックアップを選択", "选择要恢复的备份");
+        self.add("no_backups_available", "No backups available", "バックアップがありません", "没有可用的备份");
+        self.add("restore_warning", "Warning: This will replace your current database.", "警告: 現在のデータベースが置き換えられます。", "警告：这将替换您当前的数据库。");
         self.add("thumbnail_scale", "Thumbnail Scale", "サムネイルのサイズ", "缩略图大小");
         self.add("show_full_filename", "Show full filename in grid view", "グリッド表示でファイル名を全て表示", "在网格视图中显示完整文件名");
         self.add("show_tags_in_grid", "Show tags in grid view", "グリッド表示でタグを表示", "在网格视图中显示标签");
