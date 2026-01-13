@@ -322,8 +322,9 @@ pub fn get_video_by_path(conn: &Connection, path: &PathBuf) -> SqlResult<Option<
     }
 }
 
-/// Load all videos from the database
+/// Load all videos from the database (optimized with batch loading)
 pub fn load_all_videos(conn: &Connection) -> SqlResult<Vec<VideoFile>> {
+    // Load all videos
     let mut stmt = conn.prepare(
         "SELECT id, path, title, duration, file_size, resolution_width, resolution_height, 
                 thumbnail_path, folder, rating, added_date, last_played 
@@ -333,14 +334,49 @@ pub fn load_all_videos(conn: &Connection) -> SqlResult<Vec<VideoFile>> {
     let video_rows = stmt.query_map([], video_from_row)?
         .collect::<SqlResult<Vec<VideoFile>>>()?;
     
-    let mut videos = Vec::with_capacity(video_rows.len());
-    for mut video in video_rows {
-        video.tags = load_video_tags(conn, &video.id)?;
-        video.scenes = load_video_scenes(conn, &video.id)?;
-        videos.push(video);
+    // Build a map of video_id -> video for efficient lookup
+    let mut video_map: std::collections::HashMap<String, VideoFile> = 
+        video_rows.into_iter().map(|v| (v.id.clone(), v)).collect();
+    
+    // Batch load all tags
+    let mut tag_stmt = conn.prepare("SELECT video_id, tag FROM video_tags ORDER BY video_id")?;
+    let tag_rows = tag_stmt.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    })?;
+    
+    for tag_result in tag_rows {
+        if let Ok((video_id, tag)) = tag_result {
+            if let Some(video) = video_map.get_mut(&video_id) {
+                video.tags.push(tag);
+            }
+        }
     }
     
-    Ok(videos)
+    // Batch load all scenes
+    let mut scene_stmt = conn.prepare(
+        "SELECT video_id, timestamp, thumbnail_path FROM scenes ORDER BY video_id, timestamp"
+    )?;
+    let scene_rows = scene_stmt.query_map([], |row| {
+        Ok((
+            row.get::<_, String>(0)?,
+            row.get::<_, f64>(1)?,
+            row.get::<_, String>(2)?
+        ))
+    })?;
+    
+    for scene_result in scene_rows {
+        if let Ok((video_id, timestamp, path_str)) = scene_result {
+            if let Some(video) = video_map.get_mut(&video_id) {
+                video.scenes.push(SceneInfo {
+                    timestamp,
+                    thumbnail_path: PathBuf::from(path_str),
+                });
+            }
+        }
+    }
+    
+    // Convert map back to vector
+    Ok(video_map.into_values().collect())
 }
 
 /// Load all folders from the database
@@ -541,4 +577,99 @@ pub fn load_settings() -> Result<AppSettings, Box<dyn std::error::Error>> {
     let json = fs::read_to_string(path)?;
     let settings = serde_json::from_str(&json)?;
     Ok(settings)
+}
+
+/// Get backup database file path (with generation number)
+pub fn get_backup_path_with_generation(generation: u8) -> PathBuf {
+    let mut path = get_database_dir();
+    path.push(format!("database_backup_{}.db", generation));
+    path
+}
+
+/// Get backup database file path (latest backup = generation 1)
+pub fn get_backup_path() -> PathBuf {
+    get_backup_path_with_generation(1)
+}
+
+/// Check if backup is needed (every 3 days)
+pub fn should_backup(settings: &AppSettings) -> bool {
+    if let Some(ref last_backup_str) = settings.last_backup_date {
+        if let Ok(last_backup) = DateTime::parse_from_rfc3339(last_backup_str) {
+            let now = Utc::now();
+            let last_backup_utc = last_backup.with_timezone(&Utc);
+            let days_since_backup = (now - last_backup_utc).num_days();
+            return days_since_backup >= 3;
+        }
+    }
+    // No backup date recorded, should backup
+    true
+}
+
+/// Rotate backup files (keep up to 3 generations)
+/// Generation 1 is the newest, generation 3 is the oldest
+fn rotate_backups() -> Result<(), Box<dyn std::error::Error>> {
+    // Delete generation 3 (oldest) if exists
+    let backup_3 = get_backup_path_with_generation(3);
+    if backup_3.exists() {
+        fs::remove_file(&backup_3)?;
+        eprintln!("[Backup] Removed oldest backup (generation 3)");
+    }
+    
+    // Rename generation 2 -> 3
+    let backup_2 = get_backup_path_with_generation(2);
+    if backup_2.exists() {
+        fs::rename(&backup_2, &backup_3)?;
+        eprintln!("[Backup] Rotated generation 2 -> 3");
+    }
+    
+    // Rename generation 1 -> 2
+    let backup_1 = get_backup_path_with_generation(1);
+    if backup_1.exists() {
+        fs::rename(&backup_1, &backup_2)?;
+        eprintln!("[Backup] Rotated generation 1 -> 2");
+    }
+    
+    Ok(())
+}
+
+/// Create a backup of the database (with 3-generation rotation)
+pub fn create_backup() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    let source_path = get_database_path();
+    
+    if source_path.exists() {
+        // Rotate existing backups first
+        rotate_backups()?;
+        
+        // Create new backup as generation 1
+        let backup_path = get_backup_path_with_generation(1);
+        let conn = open_connection()?;
+        let backup_path_str = backup_path.to_string_lossy();
+        
+        conn.execute(&format!("VACUUM INTO '{}'", backup_path_str), [])?;
+        eprintln!("[Backup] Database backed up to {:?}", backup_path);
+        
+        return Ok(backup_path);
+    }
+    
+    Ok(get_backup_path())
+}
+
+/// Perform backup if needed and update settings
+pub fn perform_backup_if_needed(settings: &mut AppSettings) -> Result<bool, Box<dyn std::error::Error>> {
+    if should_backup(settings) {
+        create_backup()?;
+        settings.last_backup_date = Some(Utc::now().to_rfc3339());
+        save_settings(settings)?;
+        Ok(true)
+    } else {
+        Ok(false)
+    }
+}
+
+/// Optimize the database (VACUUM and ANALYZE)
+pub fn optimize_database() -> Result<(), Box<dyn std::error::Error>> {
+    let conn = open_connection()?;
+    conn.execute_batch("VACUUM; ANALYZE;")?;
+    eprintln!("[Optimize] Database optimized (VACUUM and ANALYZE)");
+    Ok(())
 }

@@ -309,6 +309,8 @@ pub struct AppSettings {
     pub window_position: Option<(f32, f32)>, // Window position (x, y)
     #[serde(default)]
     pub window_maximized: bool, // Window maximized state
+    #[serde(default)]
+    pub last_backup_date: Option<String>, // Last database backup date (RFC3339)
 }
 
 fn default_mpv_shortcuts_open() -> bool {
@@ -340,6 +342,7 @@ impl Default for AppSettings {
             window_size: None,
             window_position: None,
             window_maximized: false,
+            last_backup_date: None,
         }
     }
 }

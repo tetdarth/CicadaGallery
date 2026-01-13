@@ -1,4 +1,17 @@
 ================================================================================
+CicadaGallery License
+================================================================================
+
+This software is proprietary software.
+
+You are granted a non-exclusive, non-transferable license
+to use this software for personal or commercial purposes.
+
+Redistribution, modification, and reverse engineering
+are strictly prohibited.
+
+
+================================================================================
 Third-Party Software Licenses
 ================================================================================
 

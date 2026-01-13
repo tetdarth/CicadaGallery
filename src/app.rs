@@ -134,6 +134,13 @@ impl Default for VideoPlayerApp {
             let _ = database::save_database(&database);
         }
         
+        // Perform backup if needed (every 3 days)
+        match database::perform_backup_if_needed(&mut settings) {
+            Ok(true) => eprintln!("[init] Database backup created"),
+            Ok(false) => eprintln!("[init] Database backup not needed yet"),
+            Err(e) => eprintln!("[init] Failed to create backup: {}", e),
+        }
+        
         // Initialize i18n with loaded language
         let i18n = I18n::new(settings.language);
         
@@ -310,6 +317,7 @@ impl VideoPlayerApp {
             window_size: self.last_window_size,
             window_position: self.last_window_pos,
             window_maximized: false, // Don't save maximized state to avoid flicker on startup
+            last_backup_date: database::load_settings().ok().and_then(|s| s.last_backup_date),
         };
         
         if let Err(e) = database::save_settings(&settings) {
@@ -2300,19 +2308,19 @@ impl eframe::App for VideoPlayerApp {
                                                 #[cfg(target_os = "windows")]
                                                 {
                                                     let _ = std::process::Command::new("cmd")
-                                                        .args(["/C", "start", "", "https://cicadagallery.com/premium"])
+                                                        .args(["/C", "start", "", "https://tetdarth.gumroad.com/l/jmjty"])
                                                         .spawn();
                                                 }
                                                 #[cfg(target_os = "macos")]
                                                 {
                                                     let _ = std::process::Command::new("open")
-                                                        .arg("https://cicadagallery.com/premium")
+                                                        .arg("https://tetdarth.gumroad.com/l/jmjty")
                                                         .spawn();
                                                 }
                                                 #[cfg(target_os = "linux")]
                                                 {
                                                     let _ = std::process::Command::new("xdg-open")
-                                                        .arg("https://cicadagallery.com/premium")
+                                                        .arg("https://tetdarth.gumroad.com/l/jmjty")
                                                         .spawn();
                                                 }
                                             }
@@ -2653,19 +2661,19 @@ impl eframe::App for VideoPlayerApp {
                                 #[cfg(target_os = "windows")]
                                 {
                                     let _ = std::process::Command::new("cmd")
-                                        .args(["/C", "start", "", "https://cicadagallery.com/premium"])
+                                        .args(["/C", "start", "", "https://tetdarth.gumroad.com/l/jmjty"])
                                         .spawn();
                                 }
                                 #[cfg(target_os = "macos")]
                                 {
                                     let _ = std::process::Command::new("open")
-                                        .arg("https://cicadagallery.com/premium")
+                                        .arg("https://tetdarth.gumroad.com/l/jmjty")
                                         .spawn();
                                 }
                                 #[cfg(target_os = "linux")]
                                 {
                                     let _ = std::process::Command::new("xdg-open")
-                                        .arg("https://cicadagallery.com/premium")
+                                        .arg("https://tetdarth.gumroad.com/l/jmjty")
                                         .spawn();
                                 }
                             }
