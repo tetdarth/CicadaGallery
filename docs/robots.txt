@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://tetdarth.github.io/CicadaGallery/sitemap.xml
