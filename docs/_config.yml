@@ -8,6 +8,10 @@ show_downloads: false
 download_url: "https://github.com/tetdarth/CicadaGallery/releases/latest/download/CicadaGallery-windows-x64.zip"
 download_label: "Download .zip (Latest)"
 
+# Gumroad Premium License
+gumroad_url: "https://tetdarth.gumroad.com/l/jmjty"
+gumroad_label: "Premium License"
+
 # Repository info
 repository: tetdarth/CicadaGallery
 

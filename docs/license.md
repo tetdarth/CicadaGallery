@@ -1,6 +1,6 @@
 ---
 layout: default
-title: ライセンス発行
+title: Premium License
 lang: ja
 ---
 

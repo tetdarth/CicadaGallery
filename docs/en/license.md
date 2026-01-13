@@ -1,6 +1,6 @@
 ---
 layout: default
-title: License Activation
+title: Premium License
 lang: en
 ---
 
