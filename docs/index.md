@@ -38,7 +38,8 @@ lang: ja
 
 ## スクリーンショット
 
-*（スクリーンショットをここに追加）*
+![CicadaGallery メイン画面](media/ss1.png)
+![CicadaGallery mpv](media/ss2.png)
 
 ---
 
