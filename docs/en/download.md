@@ -14,11 +14,12 @@ lang: en
 
 ## Latest Version
 
-**CicadaGallery v0.1.0**
+**CicadaGallery v1.0.0**
 
 | Platform | Download |
 |----------|----------|
-| Windows (64-bit) | [cicadagallery-windows-x64.zip](https://github.com/tetdarth/CicadaGallery/releases/download/v0.1.0/cicadagallery-windows-x64.zip) |
+| Windows (64-bit) | [CicadaGallery-1.0.0-Setup.exe](https://github.com/tetdarth/CicadaGallery/releases/download/v1.0.0/CicadaGallery-1.0.0-Setup.exe) |
+| Windows (Portable) | [CicadaGallery-1.0.0-portable.zip](https://github.com/tetdarth/CicadaGallery/releases/download/v1.0.0/CicadaGallery-1.0.0-portable.zip) |
 
 ---
 
@@ -86,7 +87,8 @@ The following components are bundled:
 
 | Version | Release Date | Download |
 |---------|--------------|----------|
-| v0.1.0 | 2026-01-10 | [Download](https://github.com/tetdarth/CicadaGallery/releases/download/v0.1.0/cicadagallery-windows-x64.zip) |
+| v1.0.0 | 2026-01-13 | [Download](https://github.com/tetdarth/CicadaGallery/releases/tag/v1.0.0) |
+| v0.1.0 | 2026-01-10 | [Download](https://github.com/tetdarth/CicadaGallery/releases/tag/v0.1.0) |
 
 ---
 

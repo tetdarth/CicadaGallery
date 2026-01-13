@@ -2,7 +2,7 @@
 ; Inno Setup: https://jrsoftware.org/isinfo.php
 
 #define MyAppName "CicadaGallery"
-#define MyAppVersion "0.1.0"
+#define MyAppVersion "1.0.0"
 #define MyAppPublisher "CicadaGallery"
 #define MyAppURL "https://github.com/cicadagallery"
 #define MyAppExeName "cicada_gallery.exe"
@@ -49,7 +49,7 @@ Source: "..\image\cicadaGallery.ico"; DestDir: "{app}\image"; Flags: ignoreversi
 
 ; Documentation
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
-Source: "..\THIRD_PARTY_LICENSES.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\LICENSE"; DestDir: "{app}"; Flags: ignoreversion
 
 ; MPV - Essential components only
 Source: "..\mpv\mpv.exe"; DestDir: "{app}\mpv"; Flags: ignoreversion

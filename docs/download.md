@@ -14,11 +14,12 @@ lang: ja
 
 ## 最新バージョン
 
-**CicadaGallery v0.1.0**
+**CicadaGallery v1.0.0**
 
 | プラットフォーム | ダウンロード |
 |------------------|--------------|
-| Windows (64-bit) | [cicadagallery-windows-x64.zip](https://github.com/tetdarth/CicadaGallery/releases/download/v0.1.0/cicadagallery-windows-x64.zip) |
+| Windows (64-bit) | [CicadaGallery-1.0.0-Setup.exe](https://github.com/tetdarth/CicadaGallery/releases/download/v1.0.0/CicadaGallery-1.0.0-Setup.exe) |
+| Windows (Portable) | [CicadaGallery-1.0.0-portable.zip](https://github.com/tetdarth/CicadaGallery/releases/download/v1.0.0/CicadaGallery-1.0.0-portable.zip) |
 
 ---
 
@@ -63,7 +64,7 @@ lang: ja
 ### 価格
 
 - **個人ライセンス**：$15（買い切り）
-- **商用ライセンス**：お問い合わせください
+- **商用ライセンス**：個人開発のため未定です。お問い合わせください。
 
 ### 購入方法
 
@@ -87,7 +88,8 @@ lang: ja
 
 | バージョン | リリース日 | ダウンロード |
 |------------|------------|--------------|
-| v0.1.0 | 2026-01-10 | [ダウンロード](https://github.com/tetdarth/CicadaGallery/releases/download/v0.1.0/cicadagallery-windows-x64.zip) |
+| v1.0.0 | 2026-01-13 | [ダウンロード](https://github.com/tetdarth/CicadaGallery/releases/tag/v1.0.0) |
+| v0.1.0 | 2026-01-10 | [ダウンロード](https://github.com/tetdarth/CicadaGallery/releases/tag/v0.1.0) |
 
 ---
 

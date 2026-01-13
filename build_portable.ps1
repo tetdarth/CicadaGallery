@@ -62,8 +62,8 @@ Copy-Item "image\cicadaGallery.ico" "$appDir\image\"
 # Documentation
 Write-Host "  - README.md"
 Copy-Item "README.md" "$appDir\"
-Write-Host "  - THIRD_PARTY_LICENSES.txt"
-Copy-Item "THIRD_PARTY_LICENSES.txt" "$appDir\"
+Write-Host "  - LICENSE"
+Copy-Item "LICENSE" "$appDir\"
 
 # MPV - Essential components
 Write-Host "  - mpv\mpv.exe"
@@ -86,7 +86,7 @@ Copy-Item "ffmpeg\LICENSE.txt" "$appDir\ffmpeg\"
 # Step 4: Create ZIP archive
 Write-Host "[4/4] Creating ZIP archive..." -ForegroundColor Yellow
 
-$version = "0.1.0"
+$version = "1.0.0"
 $zipName = "CicadaGallery-$version-portable.zip"
 $zipPath = "$distDir\$zipName"
 
