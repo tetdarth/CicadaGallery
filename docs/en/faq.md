@@ -92,7 +92,27 @@ lang: en
 
 ### Q: Database seems corrupted
 
-**A:** Delete the `database.db` file and restart. A new database will be created, but registered video information will be lost.
+**A:** First, try restoring from a backup. Go to Options → Data → "Restore from Backup" to select from available backups. If no backup is available, delete the `database.db` file and restart. A new database will be created, but registered video information will be lost.
+
+---
+
+## Backup
+
+### Q: Where are backups stored?
+
+**A:** Backups are stored in the `backups` folder within the application directory. Filenames include the date and time (e.g., `database_backup_20260113_120000.db`).
+
+### Q: Can I change the auto-backup frequency?
+
+**A:** Currently, auto-backup is fixed at every 3 days. To create a manual backup, go to Options → Data → "Create Backup".
+
+### Q: How many backup generations are kept?
+
+**A:** The latest 3 generations are automatically retained. Older backups are automatically deleted when new backups are created.
+
+### Q: What happens when I restore from a backup?
+
+**A:** The database will revert to the selected backup point. After restoration, thumbnails for videos that don't have them will be automatically regenerated.
 
 ---
 

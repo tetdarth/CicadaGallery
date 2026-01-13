@@ -16,6 +16,8 @@ CicadaGallery is available in two editions: Free and Premium.
 
 The free version includes many useful features.
 
+### Video Management
+
 | Feature | Description |
 |---------|-------------|
 | 📁 Add Files & Directories | Add video files individually or by folder |
@@ -24,14 +26,36 @@ The free version includes many useful features.
 | 📂 Folder Organization | Categorize videos into virtual folders |
 | ⭐ Favorites | Mark your favorite videos |
 | 🔍 Search | Search videos by title or tag |
+| 🔢 Sorting | Sort by date added, filename, or duration |
+| 👁️ Folder Watch | Auto-detect changes in registered folders |
+
+### Display & Customization
+
+| Feature | Description |
+|---------|-------------|
+| 🎨 Dark Mode | Eye-friendly dark theme |
+| 🖼️ Thumbnail Size Adjustment | Adjust thumbnail size with slider |
+| 📐 Grid/List View | Switch between two display modes |
+| 🌍 Multi-language | Japanese, English, Chinese support |
+
+### Data Management
+
+| Feature | Description |
+|---------|-------------|
 | 💾 SQLite Database | Lightweight video information storage |
-| 🖼️ Thumbnail Generation | Auto thumbnail generation with FFmpeg |
-| 🌍 Multi-language | English, Japanese, Chinese support |
-| 🎨 Customization | Dark mode, thumbnail size adjustment, etc. |
+| 🖼️ Auto Thumbnail Generation | High-quality thumbnails with FFmpeg |
+| 💿 Auto Backup | Automatic database backup every 3 days |
+| 🔄 Manual Backup & Restore | Create and restore backups anytime |
+| 🗂️ 3-Generation Backup | Automatically manage latest 3 backups |
+| 📏 Window Size Memory | Save window size & position on exit |
+
+### Playback Features
+
+| Feature | Description |
+|---------|-------------|
 | 📺 MPV Integration | High-performance video playback with MPV |
 | 🔊 Volume Settings | Set default volume |
-| 📏 Window Size Memory | Save window size & position on exit |
-| 👁️ Folder Watch | Auto-detect changes in registered folders |
+| 🔝 Always on Top | Option to keep player on top |
 
 ### Free Version Limitations
 
@@ -54,6 +78,19 @@ Purchase a premium license to unlock all features.
 | ♾️ Unlimited Videos | Register more than 100 videos |
 | ✅ Multi-select Filters | Filter by multiple folders/tags |
 | 🔀 AND/OR Mode | Toggle AND/OR conditions for tags |
+
+---
+
+## Options Settings
+
+Options are organized into 4 tabs:
+
+| Tab | Contents |
+|-----|----------|
+| 📺 Display | Thumbnail size, dark mode, language settings |
+| 🎬 Player | Volume, always on top, shader settings |
+| 💾 Data | Create/restore backups, last backup date display |
+| 🔑 License | Enter license key, check license status |
 
 ---
 

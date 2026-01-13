@@ -24,9 +24,11 @@ Perfect for managing memories, creative work, or your collection.
 
 🖼️ **Auto Thumbnail Generation** - High-quality thumbnails powered by FFmpeg
 
-🌍 **Multi-language Support** - Japanese & English
+🌍 **Multi-language Support** - Japanese, English & Chinese
 
 📺 **High-Quality Playback** - Powerful video playback with MPV player
+
+💿 **Auto Backup** - Automatic backup every 3 days with 3-generation management
 
 ---
 
