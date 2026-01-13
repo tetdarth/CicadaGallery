@@ -188,6 +188,8 @@ impl I18n {
         self.add("select_backup", "Select Backup to Restore", "復元するバックアップを選択", "选择要恢复的备份");
         self.add("no_backups_available", "No backups available", "バックアップがありません", "没有可用的备份");
         self.add("restore_warning", "Warning: This will replace your current database.", "警告: 現在のデータベースが置き換えられます。", "警告：这将替换您当前的数据库。");
+        self.add("restore_in_progress", "Restoring... This may take a while.", "復元中... しばらくお待ちください。", "正在恢复... 请稍候。");
+        self.add("regenerating_thumbnails", "Regenerating thumbnails...", "サムネイルを再生成中...", "正在重新生成缩略图...");
         self.add("thumbnail_scale", "Thumbnail Scale", "サムネイルのサイズ", "缩略图大小");
         self.add("show_full_filename", "Show full filename in grid view", "グリッド表示でファイル名を全て表示", "在网格视图中显示完整文件名");
         self.add("show_tags_in_grid", "Show tags in grid view", "グリッド表示でタグを表示", "在网格视图中显示标签");

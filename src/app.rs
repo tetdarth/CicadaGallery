@@ -86,6 +86,10 @@ pub struct VideoPlayerApp {
     pub show_backup_restore_window: bool, // Show backup restore selection window
     pub available_backups: Vec<(PathBuf, String)>, // List of available backups (path, timestamp)
     pub backup_status_message: Option<String>, // Backup operation status message
+    pub restore_in_progress: bool, // Flag to indicate restore operation is in progress
+    pub restore_result_receiver: Option<Receiver<Result<(), String>>>, // Receiver for restore result
+    pub thumbnail_regen_in_progress: bool, // Flag to indicate thumbnail regeneration is in progress
+    pub thumbnail_regen_receiver: Option<Receiver<Result<VideoDatabase, String>>>, // Receiver for thumbnail regeneration result
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -255,6 +259,10 @@ impl Default for VideoPlayerApp {
             show_backup_restore_window: false,
             available_backups: Vec::new(),
             backup_status_message: None,
+            restore_in_progress: false,
+            restore_result_receiver: None,
+            thumbnail_regen_in_progress: false,
+            thumbnail_regen_receiver: None,
         }
     }
 }
@@ -942,7 +950,54 @@ impl VideoPlayerApp {
         let _ = database::save_database(&self.database);
     }
     
-    /// Refresh scene thumbnails for a video: delete existing scenes and regenerate
+    /// Regenerate missing thumbnails for all videos after backup restore
+    /// This checks if thumbnail files exist on disk and regenerates if missing
+    pub fn regenerate_missing_thumbnails(&mut self) {
+        let cache_dir = thumbnail::get_cache_dir();
+        let mut needs_save = false;
+        
+        for video in &mut self.database.videos {
+            // Check if video file exists
+            if !video.path.exists() {
+                eprintln!("[Restore] Skipping missing video file: {:?}", video.path);
+                continue;
+            }
+            
+            // Check main thumbnail
+            let needs_main_thumb = match &video.thumbnail_path {
+                Some(path) => !path.exists(),
+                None => true,
+            };
+            
+            if needs_main_thumb {
+                eprintln!("[Restore] Regenerating thumbnail for: {:?}", video.path);
+                video.thumbnail_path = thumbnail::create_video_thumbnail(&video.path, &cache_dir);
+                needs_save = true;
+            }
+            
+            // Check scene thumbnails
+            let has_missing_scenes = video.scenes.iter().any(|scene| !scene.thumbnail_path.exists());
+            
+            if has_missing_scenes || (!video.scenes.is_empty() && video.scenes.iter().all(|s| !s.thumbnail_path.exists())) {
+                eprintln!("[Restore] Regenerating scene thumbnails for: {:?}", video.path);
+                // Clear existing scenes
+                video.scenes.clear();
+                // Regenerate scenes
+                if let Err(e) = scene_detection::detect_scenes(video, &cache_dir) {
+                    eprintln!("[Restore] Failed to regenerate scenes for {:?}: {}", video.path, e);
+                }
+                needs_save = true;
+            }
+        }
+        
+        if needs_save {
+            let _ = database::save_database(&self.database);
+            eprintln!("[Restore] Thumbnail regeneration complete");
+        } else {
+            eprintln!("[Restore] All thumbnails are intact, no regeneration needed");
+        }
+    }
+        /// Refresh scene thumbnails for a video: delete existing scenes and regenerate
     pub fn refresh_scenes(&mut self, video_id: &str) {
         // Just clear texture caches to force reload from disk
         // Does NOT regenerate scenes
@@ -2817,6 +2872,8 @@ impl eframe::App for VideoPlayerApp {
             let no_backups_text = self.i18n.t("no_backups_available");
             let restore_success_text = self.i18n.t("restore_success");
             let restore_failed_text = self.i18n.t("restore_failed");
+            let restore_in_progress_text = self.i18n.t("restore_in_progress");
+            let regenerating_text = self.i18n.t("regenerating_thumbnails");
             
             let mut window_open = self.show_backup_restore_window;
             let mut restore_path: Option<PathBuf> = None;
@@ -2826,6 +2883,22 @@ impl eframe::App for VideoPlayerApp {
                 .resizable(true)
                 .default_width(400.0)
                 .show(ctx, |ui| {
+                    // Show processing indicator if restore or thumbnail regeneration is in progress
+                    if self.restore_in_progress || self.thumbnail_regen_in_progress {
+                        ui.vertical_centered(|ui| {
+                            ui.add_space(20.0);
+                            ui.spinner();
+                            ui.add_space(10.0);
+                            if self.thumbnail_regen_in_progress {
+                                ui.label(egui::RichText::new(&regenerating_text).strong());
+                            } else {
+                                ui.label(egui::RichText::new(&restore_in_progress_text).strong());
+                            }
+                            ui.add_space(20.0);
+                        });
+                        return;
+                    }
+                    
                     ui.label(egui::RichText::new(&restore_warning).color(egui::Color32::YELLOW));
                     ui.add_space(10.0);
                     
@@ -2837,9 +2910,12 @@ impl eframe::App for VideoPlayerApp {
                                 let display_name = database::format_backup_timestamp(timestamp);
                                 ui.horizontal(|ui| {
                                     ui.label(&display_name);
-                                    if ui.button("Restore").clicked() {
-                                        restore_path = Some(path.clone());
-                                    }
+                                    // Disable button while restore is in progress
+                                    ui.add_enabled_ui(!self.restore_in_progress, |ui| {
+                                        if ui.button("Restore").clicked() {
+                                            restore_path = Some(path.clone());
+                                        }
+                                    });
                                 });
                                 ui.separator();
                             }
@@ -2849,21 +2925,73 @@ impl eframe::App for VideoPlayerApp {
             
             self.show_backup_restore_window = window_open;
             
-            // Handle restore action
+            // Start restore in background thread
             if let Some(path) = restore_path {
-                match database::restore_from_backup(&path) {
-                    Ok(()) => {
-                        self.backup_status_message = Some(restore_success_text);
-                        self.show_backup_restore_window = false;
-                        // Reload database
-                        if let Ok(new_db) = database::load_database() {
-                            self.database = new_db;
+                self.restore_in_progress = true;
+                self.backup_status_message = Some(restore_in_progress_text.clone());
+                
+                // Create channel for result
+                let (tx, rx) = channel();
+                self.restore_result_receiver = Some(rx);
+                
+                // Spawn background thread for restore
+                std::thread::spawn(move || {
+                    let result = database::restore_from_backup(&path);
+                    let _ = tx.send(result.map_err(|e| e.to_string()));
+                });
+            }
+            
+            // Check for restore completion
+            if self.restore_in_progress {
+                if let Some(ref receiver) = self.restore_result_receiver {
+                    if let Ok(result) = receiver.try_recv() {
+                        match result {
+                            Ok(()) => {
+                                // Reload database and start thumbnail regeneration in background
+                                if let Ok(new_db) = database::load_database() {
+                                    // Start thumbnail regeneration in background thread
+                                    let (tx, rx) = channel();
+                                    self.thumbnail_regen_receiver = Some(rx);
+                                    self.thumbnail_regen_in_progress = true;
+                                    
+                                    std::thread::spawn(move || {
+                                        let result = regenerate_missing_thumbnails_async(new_db);
+                                        let _ = tx.send(result);
+                                    });
+                                }
+                            }
+                            Err(e) => {
+                                self.backup_status_message = Some(format!("{}: {}", restore_failed_text, e));
+                            }
                         }
-                    }
-                    Err(e) => {
-                        self.backup_status_message = Some(format!("{}: {}", restore_failed_text, e));
+                        self.restore_in_progress = false;
+                        self.restore_result_receiver = None;
                     }
                 }
+                // Request repaint to keep checking
+                ctx.request_repaint();
+            }
+            
+            // Check for thumbnail regeneration completion
+            if self.thumbnail_regen_in_progress {
+                if let Some(ref receiver) = self.thumbnail_regen_receiver {
+                    if let Ok(result) = receiver.try_recv() {
+                        match result {
+                            Ok(updated_db) => {
+                                self.database = updated_db;
+                                self.backup_status_message = Some(restore_success_text.clone());
+                                self.show_backup_restore_window = false;
+                            }
+                            Err(e) => {
+                                self.backup_status_message = Some(format!("{}: {}", restore_failed_text, e));
+                            }
+                        }
+                        self.thumbnail_regen_in_progress = false;
+                        self.thumbnail_regen_receiver = None;
+                    }
+                }
+                // Request repaint to keep checking
+                ctx.request_repaint();
             }
         }
         
@@ -3864,4 +3992,56 @@ fn load_image_data(image_path: &PathBuf) -> Option<(Vec<u8>, [usize; 2])> {
     let pixels = image_buffer.into_raw();
     
     Some((pixels, size))
+}
+
+/// Async version of regenerate_missing_thumbnails for running in a background thread
+/// Takes ownership of database and returns the updated database
+fn regenerate_missing_thumbnails_async(mut database: VideoDatabase) -> Result<VideoDatabase, String> {
+    let cache_dir = thumbnail::get_cache_dir();
+    let mut needs_save = false;
+    
+    for video in &mut database.videos {
+        // Check if video file exists
+        if !video.path.exists() {
+            eprintln!("[Restore] Skipping missing video file: {:?}", video.path);
+            continue;
+        }
+        
+        // Check main thumbnail
+        let needs_main_thumb = match &video.thumbnail_path {
+            Some(path) => !path.exists(),
+            None => true,
+        };
+        
+        if needs_main_thumb {
+            eprintln!("[Restore] Regenerating thumbnail for: {:?}", video.path);
+            video.thumbnail_path = thumbnail::create_video_thumbnail(&video.path, &cache_dir);
+            needs_save = true;
+        }
+        
+        // Check scene thumbnails
+        let has_missing_scenes = video.scenes.iter().any(|scene| !scene.thumbnail_path.exists());
+        
+        if has_missing_scenes || (!video.scenes.is_empty() && video.scenes.iter().all(|s| !s.thumbnail_path.exists())) {
+            eprintln!("[Restore] Regenerating scene thumbnails for: {:?}", video.path);
+            // Clear existing scenes
+            video.scenes.clear();
+            // Regenerate scenes
+            if let Err(e) = scene_detection::detect_scenes(video, &cache_dir) {
+                eprintln!("[Restore] Failed to regenerate scenes for {:?}: {}", video.path, e);
+            }
+            needs_save = true;
+        }
+    }
+    
+    if needs_save {
+        if let Err(e) = database::save_database(&database) {
+            return Err(format!("Failed to save database: {}", e));
+        }
+        eprintln!("[Restore] Thumbnail regeneration complete");
+    } else {
+        eprintln!("[Restore] All thumbnails are intact, no regeneration needed");
+    }
+    
+    Ok(database)
 }
