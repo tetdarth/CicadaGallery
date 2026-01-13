@@ -1,6 +1,10 @@
 ---
 layout: default
 title: よくある質問
+title: CicadaGallery – 完全ローカルの動画ギャラリー
+description: >
+  完全ローカルで動作する、高速・軽量な動画管理アプリ。
+  クラウド不要、サブスクなし。
 lang: ja
 ---
 

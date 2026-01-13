@@ -23,6 +23,8 @@ baseurl: "/CicadaGallery"
 plugins:
   - jekyll-remote-theme
   - jekyll-relative-links
+  - jekyll-seo-tag
+  - jekyll-sitemap
 
 # Navigation
 header_pages:
@@ -38,4 +40,5 @@ lang: ja
 # SEO
 author: tetdarth
 twitter:
-  card: https://x.com/tttettt4
+  username: tttettt4
+  card: summary_large_image
