@@ -1,6 +1,6 @@
 ---
 layout: default
-title: CicadaGallery
+title: CicadaGallery | 動画管理 ソフト | 動画 ギャラリー ソフト | 動画 素材 管理 | ローカル 動画 管理
 lang: en
 ---
 

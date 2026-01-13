@@ -1,7 +1,7 @@
 # CicadaGallery GitHub Pages Configuration
 title: CicadaGallery
 description: Rust製の動画管理・再生アプリケーション
-remote_theme: pages-themes/cayman@v0.2.0
+theme: jekyll-theme-cayman
 show_downloads: false
 
 # Custom download settings
@@ -21,7 +21,6 @@ baseurl: "/CicadaGallery"
 
 # Plugins
 plugins:
-  - jekyll-remote-theme
   - jekyll-relative-links
   - jekyll-seo-tag
   - jekyll-sitemap
