@@ -1,6 +1,10 @@
 ---
 layout: default
-title: CicadaGallery |
+title: CicadaGallery | Video Management Software | Video Gallery App | Local Video Manager
+title: CicadaGallery – Fast & Lightweight Video Gallery
+description: >
+  A completely local, fast and lightweight video management app.
+  No cloud, no subscription.
 lang: en
 ---
 
