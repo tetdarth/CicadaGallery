@@ -17,8 +17,8 @@ repository: tetdarth/CicadaGallery
 github_repo_url: "https://github.com/tetdarth/CicadaGallery"
 
 # URL Configuration
-url: "https://tetdarth.github.io"
-baseurl: "/CicadaGallery"
+url: "https://www.cicadagallery.net"
+baseurl: ""
 
 # Plugins
 plugins:
