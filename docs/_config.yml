@@ -6,7 +6,7 @@ show_downloads: false
 
 # Custom download settings
 download_url: "https://github.com/tetdarth/CicadaGallery/releases/download/v1.0.0/CicadaGallery-1.0.0-setup.exe"
-download_label: "インストーラーをダウンロード"
+download_label: "download v1.0.0"
 
 # Gumroad Premium License
 gumroad_url: "https://tetdarth.gumroad.com/l/jmjty"
