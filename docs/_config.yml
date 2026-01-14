@@ -5,8 +5,8 @@ theme: jekyll-theme-cayman
 show_downloads: false
 
 # Custom download settings
-download_url: "https://github.com/tetdarth/CicadaGallery/releases/download/v1.0.0/CicadaGallery-1.0.0-portable.zip"
-download_label: "Download v1.0.0 (.zip)"
+download_url: "https://github.com/tetdarth/CicadaGallery/releases/download/v1.0.0/CicadaGallery-1.0.0-setup.exe"
+download_label: "インストーラーをダウンロード"
 
 # Gumroad Premium License
 gumroad_url: "https://tetdarth.gumroad.com/l/jmjty"
