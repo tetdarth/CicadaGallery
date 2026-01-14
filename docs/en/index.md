@@ -1,6 +1,6 @@
 ---
 layout: default
-title: CicadaGallery | 動画管理 ソフト | 動画 ギャラリー ソフト | 動画 素材 管理 | ローカル 動画 管理
+title: CicadaGallery |
 lang: en
 ---
 
@@ -24,7 +24,7 @@ Perfect for managing memories, creative work, or your collection.
 
 🖼️ **Auto Thumbnail Generation** - High-quality thumbnails powered by FFmpeg
 
-🌍 **Multi-language Support** - Japanese, English & Chinese
+🌍 **Multi-language Support** - Japanese, English
 
 📺 **High-Quality Playback** - Powerful video playback with MPV player
 
