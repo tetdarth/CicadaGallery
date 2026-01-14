@@ -1,4 +1,6 @@
 User-agent: *
 Allow: /
+Disallow: /license.html
+Disallow: /en/license.html
 
-Sitemap: https://tetdarth.github.io/CicadaGallery/sitemap.xml
+Sitemap: https://www.cicadagallery.net/sitemap.xml

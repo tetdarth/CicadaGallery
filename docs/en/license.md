@@ -1,7 +1,8 @@
 ---
 layout: default
-title: Premium License
+title: License Activation
 lang: en
+sitemap: false
 ---
 
 [🇯🇵 日本語](../license.md) | **🇺🇸 English**

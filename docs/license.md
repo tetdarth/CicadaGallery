@@ -2,6 +2,7 @@
 layout: default
 title: Premium License
 lang: ja
+sitemap: false
 ---
 
 **🇯🇵 日本語** | [🇺🇸 English](en/license.md)
