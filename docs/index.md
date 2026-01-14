@@ -1,10 +1,9 @@
 ---
 layout: default
-title: CicadaGallery | 動画管理 ソフト | 動画 ギャラリー ソフト | 動画 素材 管理 | ローカル 動画 管理
-title: CicadaGallery – 高速・軽量の動画ギャラリー
+title: CicadaGallery
 description: >
-  完全ローカルで動作する、高速・軽量な動画管理アプリ。
-  クラウド不要、サブスクなし。
+  完全ローカルで動作する、高速・軽量な動画管理・再生アプリ。
+  クラウド不要・サブスクリプションなし。
 lang: ja
 ---
 
