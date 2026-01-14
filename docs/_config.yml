@@ -1,6 +1,6 @@
 # CicadaGallery GitHub Pages Configuration
 title: CicadaGallery
-description: Rust製の動画管理・再生アプリケーション
+description: A video management and playback application written in Rust
 theme: jekyll-theme-cayman
 show_downloads: false
 
