@@ -27,6 +27,8 @@ Perfect for managing memories, creative work, or your collection.
 
 🖼️ **Auto Thumbnail Generation** - High-quality thumbnails powered by FFmpeg
 
+👤 **Profile System** - Manage completely separate libraries with multiple profiles
+
 🌍 **Multi-language Support** - Japanese, English
 
 📺 **High-Quality Playback** - Powerful video playback with MPV player

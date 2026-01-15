@@ -1,6 +1,10 @@
 ---
 layout: default
 title: Features
+title: CicadaGallery – Fully Local Video Gallery
+description: >
+  Manage large local video collections with a fast,
+  lightweight gallery. No cloud, no subscription.
 lang: en
 ---
 
@@ -44,7 +48,9 @@ The free version includes many useful features.
 |---------|-------------|
 | 💾 SQLite Database | Lightweight video information storage |
 | 🖼️ Auto Thumbnail Generation | High-quality thumbnails with FFmpeg |
-| 💿 Auto Backup | Automatic database backup every 3 days |
+| � Thumbnail Regeneration | Batch regenerate thumbnails for selected videos |
+| 👤 Profile System | Manage completely separate libraries with multiple profiles |
+| �💿 Auto Backup | Automatic database backup every 3 days |
 | 🔄 Manual Backup & Restore | Create and restore backups anytime |
 | 🗂️ 3-Generation Backup | Automatically manage latest 3 backups |
 | 📏 Window Size Memory | Save window size & position on exit |
