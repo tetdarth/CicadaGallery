@@ -1,8 +1,26 @@
 use crate::models::{VideoDatabase, VideoFile, SceneInfo, AppSettings};
 use std::path::PathBuf;
 use std::fs;
+use std::cell::RefCell;
 use rusqlite::{Connection, params, Result as SqlResult};
 use chrono::{DateTime, Utc};
+
+// Thread-local storage for current profile name
+thread_local! {
+    static CURRENT_PROFILE: RefCell<String> = RefCell::new("default".to_string());
+}
+
+/// Set the current profile for database operations
+pub fn set_current_profile(profile_name: &str) {
+    CURRENT_PROFILE.with(|p| {
+        *p.borrow_mut() = profile_name.to_string();
+    });
+}
+
+/// Get the current profile name
+pub fn get_current_profile() -> String {
+    CURRENT_PROFILE.with(|p| p.borrow().clone())
+}
 
 /// Get database directory path
 fn get_database_dir() -> PathBuf {
@@ -38,9 +56,20 @@ pub fn get_settings_path() -> PathBuf {
     path
 }
 
-/// Open or create the SQLite database connection
+/// Open or create the SQLite database connection for the current profile
 pub fn open_connection() -> SqlResult<Connection> {
-    let path = get_database_path();
+    let profile = get_current_profile();
+    let path = if profile == "default" {
+        get_database_path()
+    } else {
+        get_profile_database_path(&profile)
+    };
+    
+    // Ensure parent directory exists
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    
     let conn = Connection::open(&path)?;
     
     // Enable WAL mode for better performance
@@ -746,4 +775,308 @@ pub fn optimize_database() -> Result<(), Box<dyn std::error::Error>> {
     conn.execute_batch("VACUUM; ANALYZE;")?;
     eprintln!("[Optimize] Database optimized (VACUUM and ANALYZE)");
     Ok(())
+}
+
+// ============================================================================
+// Profile Management
+// ============================================================================
+
+/// Get profiles directory path
+pub fn get_profiles_dir() -> PathBuf {
+    let mut path = get_database_dir();
+    path.push("profiles");
+    
+    // Create directory if it doesn't exist
+    if !path.exists() {
+        let _ = fs::create_dir_all(&path);
+    }
+    
+    path
+}
+
+/// Get profile directory path for a specific profile (does NOT auto-create)
+fn get_profile_dir_path(profile_name: &str) -> PathBuf {
+    let mut path = get_profiles_dir();
+    path.push(profile_name);
+    path
+}
+
+/// Get profile directory path for a specific profile (auto-creates if needed)
+pub fn get_profile_dir(profile_name: &str) -> PathBuf {
+    let path = get_profile_dir_path(profile_name);
+    
+    // Create directory if it doesn't exist
+    if !path.exists() {
+        let _ = fs::create_dir_all(&path);
+    }
+    
+    path
+}
+
+/// Get database path for a specific profile
+pub fn get_profile_database_path(profile_name: &str) -> PathBuf {
+    let mut path = get_profile_dir(profile_name);
+    path.push("database.db");
+    path
+}
+
+/// Get cache directory for a specific profile
+pub fn get_profile_cache_dir(profile_name: &str) -> PathBuf {
+    let mut path = get_profile_dir(profile_name);
+    path.push("cache");
+    
+    // Create directory if it doesn't exist
+    if !path.exists() {
+        let _ = fs::create_dir_all(&path);
+    }
+    
+    path
+}
+
+/// List all available profiles
+pub fn list_profiles() -> Result<Vec<(String, u64)>, Box<dyn std::error::Error>> {
+    let profiles_dir = get_profiles_dir();
+    let mut profiles = Vec::new();
+    
+    // Add "default" profile (from the original database location)
+    let default_db = get_database_path();
+    let default_count = if default_db.exists() {
+        // Count videos in default database
+        match Connection::open(&default_db) {
+            Ok(conn) => {
+                conn.query_row("SELECT COUNT(*) FROM videos", [], |row| row.get(0)).unwrap_or(0)
+            }
+            Err(_) => 0
+        }
+    } else {
+        0
+    };
+    profiles.push(("default".to_string(), default_count));
+    
+    // Scan profiles directory
+    if profiles_dir.exists() {
+        if let Ok(entries) = fs::read_dir(&profiles_dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    let profile_name = path.file_name()
+                        .and_then(|n| n.to_str())
+                        .map(|s| s.to_string());
+                    
+                    if let Some(name) = profile_name {
+                        // Skip if it's "default" (already added)
+                        if name == "default" {
+                            continue;
+                        }
+                        
+                        // Count videos in this profile's database
+                        let db_path = get_profile_database_path(&name);
+                        let count = if db_path.exists() {
+                            match Connection::open(&db_path) {
+                                Ok(conn) => {
+                                    conn.query_row("SELECT COUNT(*) FROM videos", [], |row| row.get(0)).unwrap_or(0)
+                                }
+                                Err(_) => 0
+                            }
+                        } else {
+                            0
+                        };
+                        
+                        profiles.push((name, count));
+                    }
+                }
+            }
+        }
+    }
+    
+    // Sort by name (but keep "default" first)
+    profiles.sort_by(|a, b| {
+        if a.0 == "default" {
+            std::cmp::Ordering::Less
+        } else if b.0 == "default" {
+            std::cmp::Ordering::Greater
+        } else {
+            a.0.cmp(&b.0)
+        }
+    });
+    
+    Ok(profiles)
+}
+
+/// Create a new profile
+pub fn create_profile(profile_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Validate profile name
+    if profile_name.is_empty() || profile_name == "default" {
+        return Err("Invalid profile name".into());
+    }
+    
+    // Check for invalid characters
+    if profile_name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
+        return Err("Profile name contains invalid characters".into());
+    }
+    
+    // Use non-auto-creating path check
+    let profile_dir = get_profile_dir_path(profile_name);
+    
+    // Check if profile already exists
+    if profile_dir.exists() {
+        return Err("Profile already exists".into());
+    }
+    
+    // Create profile directory
+    fs::create_dir_all(&profile_dir)?;
+    
+    // Create cache directory
+    let mut cache_dir = profile_dir.clone();
+    cache_dir.push("cache");
+    fs::create_dir_all(&cache_dir)?;
+    
+    // Initialize empty database for this profile
+    let mut db_path = profile_dir;
+    db_path.push("database.db");
+    let conn = Connection::open(&db_path)?;
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
+    init_database(&conn)?;
+    
+    eprintln!("[Profile] Created new profile: {}", profile_name);
+    Ok(())
+}
+
+/// Delete a profile
+pub fn delete_profile(profile_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Cannot delete default profile
+    if profile_name == "default" {
+        return Err("Cannot delete the default profile".into());
+    }
+    
+    let profile_dir = get_profile_dir_path(profile_name);
+    
+    if !profile_dir.exists() {
+        return Err("Profile does not exist".into());
+    }
+    
+    // Delete the entire profile directory
+    fs::remove_dir_all(&profile_dir)?;
+    
+    eprintln!("[Profile] Deleted profile: {}", profile_name);
+    Ok(())
+}
+
+/// Rename a profile
+pub fn rename_profile(old_name: &str, new_name: &str) -> Result<(), Box<dyn std::error::Error>> {
+    // Cannot rename default profile
+    if old_name == "default" {
+        return Err("Cannot rename the default profile".into());
+    }
+    
+    // Validate new name
+    if new_name.is_empty() || new_name == "default" {
+        return Err("Invalid new profile name".into());
+    }
+    
+    if new_name.contains(['/', '\\', ':', '*', '?', '"', '<', '>', '|']) {
+        return Err("New profile name contains invalid characters".into());
+    }
+    
+    let old_dir = get_profile_dir(old_name);
+    let new_dir = get_profiles_dir().join(new_name);
+    
+    if !old_dir.exists() {
+        return Err("Profile does not exist".into());
+    }
+    
+    if new_dir.exists() {
+        return Err("A profile with the new name already exists".into());
+    }
+    
+    fs::rename(&old_dir, &new_dir)?;
+    
+    eprintln!("[Profile] Renamed profile: {} -> {}", old_name, new_name);
+    Ok(())
+}
+
+/// Open connection to a specific profile's database
+pub fn open_profile_connection(profile_name: &str) -> SqlResult<Connection> {
+    let path = if profile_name == "default" {
+        get_database_path()
+    } else {
+        get_profile_database_path(profile_name)
+    };
+    
+    let conn = Connection::open(&path)?;
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")?;
+    
+    Ok(conn)
+}
+
+/// Load database for a specific profile
+pub fn load_profile_database(profile_name: &str) -> Result<VideoDatabase, Box<dyn std::error::Error>> {
+    let db_path = if profile_name == "default" {
+        get_database_path()
+    } else {
+        get_profile_database_path(profile_name)
+    };
+    
+    // If database doesn't exist, return empty database
+    if !db_path.exists() {
+        return Ok(VideoDatabase::new());
+    }
+    
+    let conn = open_profile_connection(profile_name)?;
+    init_database(&conn)?;
+    
+    // Load from SQLite (use the same loading logic as load_database)
+    let videos = load_all_videos(&conn)?;
+    let folders = load_all_folders(&conn)?;
+    let tags = load_all_tags(&conn)?;
+    
+    Ok(VideoDatabase { videos, folders, tags })
+}
+
+/// Save database for a specific profile
+pub fn save_profile_database(profile_name: &str, database: &VideoDatabase) -> Result<(), Box<dyn std::error::Error>> {
+    let conn = open_profile_connection(profile_name)?;
+    init_database(&conn)?;
+    save_database(&database)?;
+    Ok(())
+}
+
+/// Get thumbnail directory for a specific profile
+pub fn get_profile_thumbnail_dir(profile_name: &str) -> PathBuf {
+    let cache_dir = if profile_name == "default" {
+        let mut path = get_database_dir();
+        path.push("cache");
+        path
+    } else {
+        get_profile_cache_dir(profile_name)
+    };
+    
+    let mut thumb_dir = cache_dir;
+    thumb_dir.push("thumbnails");
+    
+    if !thumb_dir.exists() {
+        let _ = fs::create_dir_all(&thumb_dir);
+    }
+    
+    thumb_dir
+}
+
+/// Get scenes directory for a specific profile
+pub fn get_profile_scenes_dir(profile_name: &str) -> PathBuf {
+    let cache_dir = if profile_name == "default" {
+        let mut path = get_database_dir();
+        path.push("cache");
+        path
+    } else {
+        get_profile_cache_dir(profile_name)
+    };
+    
+    let mut scenes_dir = cache_dir;
+    scenes_dir.push("scenes");
+    
+    if !scenes_dir.exists() {
+        let _ = fs::create_dir_all(&scenes_dir);
+    }
+    
+    scenes_dir
 }

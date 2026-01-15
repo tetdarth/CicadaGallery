@@ -311,6 +311,8 @@ pub struct AppSettings {
     pub window_maximized: bool, // Window maximized state
     #[serde(default)]
     pub last_backup_date: Option<String>, // Last database backup date (RFC3339)
+    #[serde(default = "default_profile")]
+    pub current_profile: String, // Current active profile name
 }
 
 fn default_mpv_shortcuts_open() -> bool {
@@ -319,6 +321,10 @@ fn default_mpv_shortcuts_open() -> bool {
 
 fn default_mpv_volume() -> u8 {
     100
+}
+
+fn default_profile() -> String {
+    "default".to_string()
 }
 
 impl Default for AppSettings {
@@ -343,6 +349,7 @@ impl Default for AppSettings {
             window_position: None,
             window_maximized: false,
             last_backup_date: None,
+            current_profile: "default".to_string(),
         }
     }
 }

@@ -90,6 +90,13 @@ pub struct VideoPlayerApp {
     pub restore_result_receiver: Option<Receiver<Result<(), String>>>, // Receiver for restore result
     pub thumbnail_regen_in_progress: bool, // Flag to indicate thumbnail regeneration is in progress
     pub thumbnail_regen_receiver: Option<Receiver<Result<VideoDatabase, String>>>, // Receiver for thumbnail regeneration result
+    // Profile management
+    pub current_profile: String, // Current active profile name
+    pub available_profiles: Vec<(String, u64)>, // List of available profiles (name, video count)
+    pub new_profile_name: String, // Input for new profile name
+    pub profile_status_message: Option<String>, // Profile operation status message
+    pub profile_delete_confirm: Option<String>, // Profile name pending deletion confirmation
+    pub profile_switch_pending: Option<String>, // Profile name to switch to (requires restart)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -127,11 +134,18 @@ pub enum OptionsTab {
 
 impl Default for VideoPlayerApp {
     fn default() -> Self {
-        // Load database
-        let mut database = database::load_database().unwrap_or_else(|_| VideoDatabase::new());
-        
-        // Load settings
+        // Load settings first to get current profile
         let mut settings = database::load_settings().unwrap_or_default();
+        let current_profile = settings.current_profile.clone();
+        
+        // Set the current profile for all database operations
+        database::set_current_profile(&current_profile);
+        
+        // Load database for the current profile
+        let mut database = database::load_profile_database(&current_profile)
+            .unwrap_or_else(|_| VideoDatabase::new());
+        
+        eprintln!("[init] Loading profile: {}", current_profile);
         
         // Update added_date from file metadata for all existing videos (only once)
         if !settings.added_dates_updated && !database.videos.is_empty() {
@@ -263,6 +277,13 @@ impl Default for VideoPlayerApp {
             restore_result_receiver: None,
             thumbnail_regen_in_progress: false,
             thumbnail_regen_receiver: None,
+            // Profile management
+            current_profile: settings.current_profile.clone(),
+            available_profiles: database::list_profiles().unwrap_or_default(),
+            new_profile_name: String::new(),
+            profile_status_message: None,
+            profile_delete_confirm: None,
+            profile_switch_pending: None,
         }
     }
 }
@@ -344,6 +365,7 @@ impl VideoPlayerApp {
             window_position: self.last_window_pos,
             window_maximized: false, // Don't save maximized state to avoid flicker on startup
             last_backup_date: database::load_settings().ok().and_then(|s| s.last_backup_date),
+            current_profile: self.current_profile.clone(),
         };
         
         if let Err(e) = database::save_settings(&settings) {
@@ -1444,9 +1466,24 @@ impl VideoPlayerApp {
             
             ui.separator();
             
+            // Refresh profile button - handles both single and multiple selection
             let video_id_for_refresh = video.id.clone();
-            if ui.button(&self.i18n.t("refresh_profile")).clicked() {
-                self.refresh_video_profile(&video_id_for_refresh);
+            let refresh_label = if self.selected_videos.len() > 1 {
+                format!("{} ({})", self.i18n.t("refresh_profile"), self.selected_videos.len())
+            } else {
+                self.i18n.t("refresh_profile")
+            };
+            if ui.button(&refresh_label).clicked() {
+                if self.selected_videos.len() > 1 {
+                    // Refresh all selected videos
+                    let selected_ids: Vec<String> = self.selected_videos.iter().cloned().collect();
+                    for video_id in selected_ids {
+                        self.refresh_video_profile(&video_id);
+                    }
+                } else {
+                    // Refresh single video
+                    self.refresh_video_profile(&video_id_for_refresh);
+                }
                 ui.close_menu();
             }
             
@@ -1459,8 +1496,6 @@ impl VideoPlayerApp {
             
             // Multiple selection delete option
             if self.selected_videos.len() > 1 {
-                ui.separator();
-                
                 let delete_multiple_text = self.i18n.t("delete_selected");
                 if ui.button(&delete_multiple_text).clicked() {
                     self.delete_confirm_video = Some("__MULTI__".to_string());
@@ -2688,6 +2723,151 @@ impl eframe::App for VideoPlayerApp {
                             
                             OptionsTab::Data => {
                                 // Data management tab
+                                
+                                // Profile management section
+                                ui.heading(&self.i18n.t("profiles"));
+                                ui.add_space(5.0);
+                                
+                                // Current profile
+                                ui.horizontal(|ui| {
+                                    ui.label(format!("{}: ", self.i18n.t("current_profile")));
+                                    ui.label(egui::RichText::new(&self.current_profile).strong());
+                                });
+                                
+                                ui.add_space(10.0);
+                                
+                                // Profile list
+                                let mut delete_profile_name: Option<String> = None;
+                                
+                                // Determine which profile is selected (pending or current)
+                                let selected_profile = self.profile_switch_pending.clone().unwrap_or_else(|| self.current_profile.clone());
+                                
+                                egui::ScrollArea::vertical()
+                                    .max_height(120.0)
+                                    .show(ui, |ui| {
+                                        for (profile_name, video_count) in &self.available_profiles.clone() {
+                                            let is_selected = profile_name == &selected_profile;
+                                            let is_actual_current = profile_name == &self.current_profile;
+                                            let label = format!("{} ({})", profile_name, self.i18n.t("videos_count").replace("{}", &video_count.to_string()));
+                                            
+                                            ui.horizontal(|ui| {
+                                                // Use selectable_label for radio-like behavior
+                                                let response = ui.selectable_label(is_selected, &label);
+                                                if response.clicked() && !is_actual_current {
+                                                    eprintln!("[Profile] Clicked on: {} -> setting pending", profile_name);
+                                                    self.profile_switch_pending = Some(profile_name.clone());
+                                                }
+                                                
+                                                // Delete button (only for non-current, non-default profiles)
+                                                if !is_actual_current && profile_name != "default" {
+                                                    if ui.small_button("🗑").on_hover_text(&self.i18n.t("delete_profile")).clicked() {
+                                                        delete_profile_name = Some(profile_name.clone());
+                                                    }
+                                                }
+                                            });
+                                        }
+                                    });
+                                
+                                // Handle profile delete
+                                if let Some(profile_name) = delete_profile_name {
+                                    self.profile_delete_confirm = Some(profile_name);
+                                }
+                                
+                                ui.add_space(10.0);
+                                
+                                // New profile creation
+                                ui.horizontal(|ui| {
+                                    ui.label(&self.i18n.t("new_profile"));
+                                    ui.text_edit_singleline(&mut self.new_profile_name)
+                                        .on_hover_text(&self.i18n.t("enter_profile_name"));
+                                    
+                                    if ui.button(&self.i18n.t("create_profile")).clicked() && !self.new_profile_name.is_empty() {
+                                        match database::create_profile(&self.new_profile_name) {
+                                            Ok(_) => {
+                                                self.profile_status_message = Some(self.i18n.t("profile_created"));
+                                                self.available_profiles = database::list_profiles().unwrap_or_default();
+                                                self.new_profile_name.clear();
+                                            }
+                                            Err(e) => {
+                                                self.profile_status_message = Some(format!("{}: {}", self.i18n.t("profile_create_failed"), e));
+                                            }
+                                        }
+                                    }
+                                });
+                                
+                                // Show profile status message
+                                if let Some(ref msg) = self.profile_status_message {
+                                    ui.add_space(5.0);
+                                    ui.label(msg);
+                                }
+                                
+                                // Profile switch pending notice
+                                if let Some(ref pending_profile) = self.profile_switch_pending.clone() {
+                                    ui.add_space(10.0);
+                                    ui.separator();
+                                    ui.add_space(5.0);
+                                    
+                                    // Show which profile will be switched to
+                                    ui.horizontal(|ui| {
+                                        ui.label(&self.i18n.t("switch_to_profile"));
+                                        ui.label(egui::RichText::new(pending_profile.as_str()).strong().color(egui::Color32::LIGHT_BLUE));
+                                    });
+                                    
+                                    ui.label(egui::RichText::new(&self.i18n.t("profile_switch_notice")).color(egui::Color32::YELLOW));
+                                    
+                                    ui.add_space(5.0);
+                                    ui.horizontal(|ui| {
+                                        if ui.button(&self.i18n.t("ok")).clicked() {
+                                            // Save the profile switch to settings
+                                            if let Ok(mut settings) = database::load_settings() {
+                                                settings.current_profile = pending_profile.clone();
+                                                let _ = database::save_settings(&settings);
+                                            }
+                                            // Update current_profile in UI to maintain selection state
+                                            self.current_profile = pending_profile.clone();
+                                            self.profile_switch_pending = None;
+                                            // Notify user to restart
+                                            self.profile_status_message = Some(self.i18n.t("profile_switch_notice"));
+                                        }
+                                        if ui.button(&self.i18n.t("cancel")).clicked() {
+                                            self.profile_switch_pending = None;
+                                        }
+                                    });
+                                }
+                                
+                                // Profile delete confirmation
+                                if let Some(ref delete_profile) = self.profile_delete_confirm.clone() {
+                                    ui.add_space(10.0);
+                                    ui.separator();
+                                    ui.label(egui::RichText::new(&self.i18n.t("confirm_delete_profile")).color(egui::Color32::RED));
+                                    
+                                    // Show video count for the profile
+                                    if let Some((_, count)) = self.available_profiles.iter().find(|(n, _)| n == delete_profile) {
+                                        ui.label(self.i18n.t("profile_has_videos").replace("{}", &count.to_string()));
+                                    }
+                                    
+                                    ui.horizontal(|ui| {
+                                        if ui.button(&self.i18n.t("yes_delete")).clicked() {
+                                            match database::delete_profile(delete_profile) {
+                                                Ok(_) => {
+                                                    self.profile_status_message = Some(self.i18n.t("profile_deleted"));
+                                                    self.available_profiles = database::list_profiles().unwrap_or_default();
+                                                }
+                                                Err(e) => {
+                                                    self.profile_status_message = Some(format!("{}: {}", self.i18n.t("profile_delete_failed"), e));
+                                                }
+                                            }
+                                            self.profile_delete_confirm = None;
+                                        }
+                                        if ui.button(&self.i18n.t("cancel")).clicked() {
+                                            self.profile_delete_confirm = None;
+                                        }
+                                    });
+                                }
+                                
+                                ui.add_space(15.0);
+                                ui.separator();
+                                
                                 ui.heading(&self.i18n.t("management"));
                                 ui.add_space(5.0);
                                 
@@ -3813,9 +3993,24 @@ impl VideoPlayerApp {
                                 
                                 ui.separator();
                                 
+                                // Refresh profile button - handles both single and multiple selection
                                 let video_id_for_refresh = video.id.clone();
-                                if ui.button(&self.i18n.t("refresh_profile")).clicked() {
-                                    self.refresh_video_profile(&video_id_for_refresh);
+                                let refresh_label = if self.selected_videos.len() > 1 {
+                                    format!("{} ({})", self.i18n.t("refresh_profile"), self.selected_videos.len())
+                                } else {
+                                    self.i18n.t("refresh_profile")
+                                };
+                                if ui.button(&refresh_label).clicked() {
+                                    if self.selected_videos.len() > 1 {
+                                        // Refresh all selected videos
+                                        let selected_ids: Vec<String> = self.selected_videos.iter().cloned().collect();
+                                        for video_id in selected_ids {
+                                            self.refresh_video_profile(&video_id);
+                                        }
+                                    } else {
+                                        // Refresh single video
+                                        self.refresh_video_profile(&video_id_for_refresh);
+                                    }
                                     ui.close_menu();
                                 }
                                 
@@ -3828,8 +4023,6 @@ impl VideoPlayerApp {
                                 
                                 // Multiple selection delete option
                                 if self.selected_videos.len() > 1 {
-                                    ui.separator();
-                                    
                                     let delete_multiple_text = self.i18n.t("delete_selected");
                                     if ui.button(&delete_multiple_text).clicked() {
                                         self.delete_confirm_video = Some("__MULTI__".to_string());

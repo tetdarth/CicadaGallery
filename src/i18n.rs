@@ -116,6 +116,7 @@ impl I18n {
         self.add("play_video", "Play Video", "動画を再生", "播放视频");
         self.add("delete", "Delete", "削除", "删除");
         self.add("delete_selected", "Delete Selected", "選択項目を削除", "删除所选项");
+        self.add("refresh_selected", "Refresh Selected", "選択項目を再更新", "刷新所选项");
         self.add("show_in_folder", "Show in Folder", "フォルダで表示", "在文件夹中显示");
         self.add("refresh_profile", "Refresh Profile", "プロファイルを再更新", "刷新配置");
         self.add("toggle_favorite", "Toggle Favorite", "お気に入り切替", "切换收藏");
@@ -190,6 +191,28 @@ impl I18n {
         self.add("restore_warning", "Warning: This will replace your current database.", "警告: 現在のデータベースが置き換えられます。", "警告：这将替换您当前的数据库。");
         self.add("restore_in_progress", "Restoring... This may take a while.", "復元中... しばらくお待ちください。", "正在恢复... 请稍候。");
         self.add("regenerating_thumbnails", "Regenerating thumbnails...", "サムネイルを再生成中...", "正在重新生成缩略图...");
+        
+        // Profile management
+        self.add("profiles", "Profiles", "プロファイル", "配置文件");
+        self.add("current_profile", "Current Profile", "現在のプロファイル", "当前配置文件");
+        self.add("profile_name", "Profile Name", "プロファイル名", "配置文件名");
+        self.add("new_profile", "New Profile", "新しいプロファイル", "新建配置文件");
+        self.add("create_profile", "Create Profile", "プロファイルを作成", "创建配置文件");
+        self.add("delete_profile", "Delete Profile", "プロファイルを削除", "删除配置文件");
+        self.add("switch_profile", "Switch Profile", "プロファイルを切り替え", "切换配置文件");
+        self.add("switch_to_profile", "Switch to:", "切り替え先:", "切换到:");
+        self.add("profile_created", "Profile created successfully", "プロファイルを作成しました", "配置文件创建成功");
+        self.add("profile_deleted", "Profile deleted successfully", "プロファイルを削除しました", "配置文件删除成功");
+        self.add("profile_create_failed", "Failed to create profile", "プロファイルの作成に失敗しました", "创建配置文件失败");
+        self.add("profile_delete_failed", "Failed to delete profile", "プロファイルの削除に失敗しました", "删除配置文件失败");
+        self.add("profile_switch_notice", "Please restart the application to switch profiles.", "プロファイルを切り替えるにはアプリを再起動してください。", "请重新启动应用程序以切换配置文件。");
+        self.add("confirm_delete_profile", "Are you sure you want to delete this profile?", "このプロファイルを削除してもよろしいですか？", "确定要删除此配置文件吗？");
+        self.add("profile_has_videos", "This profile contains {} videos.", "このプロファイルには{}本の動画があります。", "此配置文件包含{}个视频。");
+        self.add("cannot_delete_default", "Cannot delete the default profile.", "デフォルトプロファイルは削除できません。", "无法删除默认配置文件。");
+        self.add("cannot_delete_current", "Cannot delete the currently active profile.", "現在使用中のプロファイルは削除できません。", "无法删除当前活动的配置文件。");
+        self.add("videos_count", "{} videos", "{}本", "{}个视频");
+        self.add("enter_profile_name", "Enter profile name", "プロファイル名を入力", "输入配置文件名");
+        
         self.add("thumbnail_scale", "Thumbnail Scale", "サムネイルのサイズ", "缩略图大小");
         self.add("show_full_filename", "Show full filename in grid view", "グリッド表示でファイル名を全て表示", "在网格视图中显示完整文件名");
         self.add("show_tags_in_grid", "Show tags in grid view", "グリッド表示でタグを表示", "在网格视图中显示标签");
