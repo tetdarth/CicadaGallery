@@ -14,12 +14,11 @@ lang: ja
 
 ## 最新バージョン
 
-**CicadaGallery v1.0.0**
+**CicadaGallery v1.0.1**
 
 | プラットフォーム | ダウンロード |
 |------------------|--------------|
-| Windows (64-bit) | [CicadaGallery-1.0.0-Setup.exe](https://github.com/tetdarth/CicadaGallery/releases/download/v1.0.0/CicadaGallery-1.0.0-Setup.exe) |
-| Windows (Portable) | [CicadaGallery-1.0.0-portable.zip](https://github.com/tetdarth/CicadaGallery/releases/download/v1.0.0/CicadaGallery-1.0.0-portable.zip) |
+| Windows (64-bit) | [CicadaGallery-1.0.1-Setup.exe](https://github.com/tetdarth/CicadaGallery/releases/download/v1.0.1/CicadaGallery-1.0.1-Setup.exe) |
 
 ---
 
