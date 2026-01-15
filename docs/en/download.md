@@ -1,7 +1,6 @@
 ---
 layout: default
 title: Download
-title: CicadaGallery – Fully Local Video Gallery
 description: >
   Manage large local video collections with a fast,
   lightweight gallery. No cloud, no subscription.
