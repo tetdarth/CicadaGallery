@@ -17,7 +17,7 @@ lang: en
 
 | Platform | Download |
 |----------|----------|
-| Windows (64-bit) | [CicadaGallery-1.0.1-Setup.exe](https://github.com/tetdarth/CicadaGallery/releases/download/v1.0.1/CicadaGallery-1.0.1-Setup.exe) |
+| Windows (64-bit) | [CicadaGallery-1.0.2-Setup.exe](https://github.com/tetdarth/CicadaGallery/releases/download/v1.0.2/CicadaGallery-1.0.2-Setup.exe) |
 
 ---
 
@@ -85,6 +85,7 @@ The following components are bundled:
 
 | Version | Release Date | Download |
 |---------|--------------|----------|
+| v1.0.1 | 2026-01-16 | [Download](https://github.com/tetdarth/CicadaGallery/releases/tag/v1.0.1) |
 | v1.0.0 | 2026-01-13 | [Download](https://github.com/tetdarth/CicadaGallery/releases/tag/v1.0.0) |
 | v0.1.0 | 2026-01-10 | [Download](https://github.com/tetdarth/CicadaGallery/releases/tag/v0.1.0) |
 
