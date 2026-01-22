@@ -2,7 +2,7 @@
 ; Inno Setup: https://jrsoftware.org/isinfo.php
 
 #define MyAppName "CicadaGallery"
-#define MyAppVersion "1.0.1"
+#define MyAppVersion "1.0.2"
 #define MyAppPublisher "CicadaGallery"
 #define MyAppURL "https://github.com/cicadagallery"
 #define MyAppExeName "cicada_gallery.exe"

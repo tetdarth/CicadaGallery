@@ -205,11 +205,16 @@ impl I18n {
         self.add("profile_deleted", "Profile deleted successfully", "プロファイルを削除しました", "配置文件删除成功");
         self.add("profile_create_failed", "Failed to create profile", "プロファイルの作成に失敗しました", "创建配置文件失败");
         self.add("profile_delete_failed", "Failed to delete profile", "プロファイルの削除に失敗しました", "删除配置文件失败");
-        self.add("profile_switch_notice", "Please restart the application to switch profiles.", "プロファイルを切り替えるにはアプリを再起動してください。", "请重新启动应用程序以切换配置文件。");
+        self.add("profile_switch_notice", "The application will restart to switch profiles.", "OKを押すとアプリが再起動してプロファイルが切り替わります。", "按确定后应用程序将重新启动以切换配置文件。");
         self.add("confirm_delete_profile", "Are you sure you want to delete this profile?", "このプロファイルを削除してもよろしいですか？", "确定要删除此配置文件吗？");
         self.add("profile_has_videos", "This profile contains {} videos.", "このプロファイルには{}本の動画があります。", "此配置文件包含{}个视频。");
         self.add("cannot_delete_default", "Cannot delete the default profile.", "デフォルトプロファイルは削除できません。", "无法删除默认配置文件。");
         self.add("cannot_delete_current", "Cannot delete the currently active profile.", "現在使用中のプロファイルは削除できません。", "无法删除当前活动的配置文件。");
+        self.add("rename_profile", "Rename Profile", "プロファイル名を変更", "重命名配置文件");
+        self.add("profile_renamed", "Profile renamed successfully", "プロファイル名を変更しました", "配置文件重命名成功");
+        self.add("profile_rename_failed", "Failed to rename profile", "プロファイル名の変更に失敗しました", "重命名配置文件失败");
+        self.add("new_name", "New Name", "新しい名前", "新名称");
+        self.add("cannot_rename_default", "Cannot rename the default profile.", "デフォルトプロファイルの名前は変更できません。", "无法重命名默认配置文件。");
         self.add("videos_count", "{} videos", "{}本", "{}个视频");
         self.add("enter_profile_name", "Enter profile name", "プロファイル名を入力", "输入配置文件名");
         

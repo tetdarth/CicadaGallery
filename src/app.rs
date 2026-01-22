@@ -97,6 +97,8 @@ pub struct VideoPlayerApp {
     pub profile_status_message: Option<String>, // Profile operation status message
     pub profile_delete_confirm: Option<String>, // Profile name pending deletion confirmation
     pub profile_switch_pending: Option<String>, // Profile name to switch to (requires restart)
+    pub profile_rename_target: Option<String>, // Profile name being renamed
+    pub profile_rename_new_name: String, // New name for the profile being renamed
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -284,6 +286,8 @@ impl Default for VideoPlayerApp {
             profile_status_message: None,
             profile_delete_confirm: None,
             profile_switch_pending: None,
+            profile_rename_target: None,
+            profile_rename_new_name: String::new(),
         }
     }
 }
@@ -2758,6 +2762,14 @@ impl eframe::App for VideoPlayerApp {
                                                     self.profile_switch_pending = Some(profile_name.clone());
                                                 }
                                                 
+                                                // Rename button (only for non-default profiles)
+                                                if profile_name != "default" {
+                                                    if ui.small_button("✏").on_hover_text(&self.i18n.t("rename_profile")).clicked() {
+                                                        self.profile_rename_target = Some(profile_name.clone());
+                                                        self.profile_rename_new_name = profile_name.clone();
+                                                    }
+                                                }
+                                                
                                                 // Delete button (only for non-current, non-default profiles)
                                                 if !is_actual_current && profile_name != "default" {
                                                     if ui.small_button("🗑").on_hover_text(&self.i18n.t("delete_profile")).clicked() {
@@ -2826,8 +2838,12 @@ impl eframe::App for VideoPlayerApp {
                                             // Update current_profile in UI to maintain selection state
                                             self.current_profile = pending_profile.clone();
                                             self.profile_switch_pending = None;
-                                            // Notify user to restart
-                                            self.profile_status_message = Some(self.i18n.t("profile_switch_notice"));
+                                            
+                                            // Restart the application
+                                            if let Ok(exe_path) = std::env::current_exe() {
+                                                let _ = std::process::Command::new(&exe_path).spawn();
+                                                std::process::exit(0);
+                                            }
                                         }
                                         if ui.button(&self.i18n.t("cancel")).clicked() {
                                             self.profile_switch_pending = None;
@@ -2861,6 +2877,63 @@ impl eframe::App for VideoPlayerApp {
                                         }
                                         if ui.button(&self.i18n.t("cancel")).clicked() {
                                             self.profile_delete_confirm = None;
+                                        }
+                                    });
+                                }
+                                
+                                // Profile rename dialog
+                                if let Some(ref rename_profile) = self.profile_rename_target.clone() {
+                                    ui.add_space(10.0);
+                                    ui.separator();
+                                    ui.add_space(5.0);
+                                    
+                                    ui.horizontal(|ui| {
+                                        ui.label(&self.i18n.t("rename_profile"));
+                                        ui.label(egui::RichText::new(rename_profile.as_str()).strong());
+                                    });
+                                    
+                                    ui.horizontal(|ui| {
+                                        ui.label(&self.i18n.t("new_name"));
+                                        ui.text_edit_singleline(&mut self.profile_rename_new_name);
+                                    });
+                                    
+                                    ui.horizontal(|ui| {
+                                        let new_name = self.profile_rename_new_name.trim().to_string();
+                                        let can_rename = !new_name.is_empty() && new_name != *rename_profile;
+                                        
+                                        if ui.add_enabled(can_rename, egui::Button::new(&self.i18n.t("ok"))).clicked() {
+                                            // If renaming current profile, update settings
+                                            let is_current = rename_profile == &self.current_profile;
+                                            
+                                            match database::rename_profile(rename_profile, &new_name) {
+                                                Ok(_) => {
+                                                    self.profile_status_message = Some(self.i18n.t("profile_renamed"));
+                                                    self.available_profiles = database::list_profiles().unwrap_or_default();
+                                                    
+                                                    // Update current profile name if it was renamed
+                                                    if is_current {
+                                                        self.current_profile = new_name.clone();
+                                                        if let Ok(mut settings) = database::load_settings() {
+                                                            settings.current_profile = new_name.clone();
+                                                            let _ = database::save_settings(&settings);
+                                                        }
+                                                    }
+                                                    
+                                                    // Update pending switch if it was targeting the renamed profile
+                                                    if self.profile_switch_pending.as_ref() == Some(rename_profile) {
+                                                        self.profile_switch_pending = Some(new_name);
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    self.profile_status_message = Some(format!("{}: {}", self.i18n.t("profile_rename_failed"), e));
+                                                }
+                                            }
+                                            self.profile_rename_target = None;
+                                            self.profile_rename_new_name.clear();
+                                        }
+                                        if ui.button(&self.i18n.t("cancel")).clicked() {
+                                            self.profile_rename_target = None;
+                                            self.profile_rename_new_name.clear();
                                         }
                                     });
                                 }
