@@ -56,6 +56,8 @@ Source: "..\mpv\mpv.exe"; DestDir: "{app}\mpv"; Flags: ignoreversion
 Source: "..\mpv\mpv.com"; DestDir: "{app}\mpv"; Flags: ignoreversion
 Source: "..\mpv\d3dcompiler_43.dll"; DestDir: "{app}\mpv"; Flags: ignoreversion
 Source: "..\mpv\glsl_shaders\*"; DestDir: "{app}\mpv\glsl_shaders"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\mpv\scripts\*"; DestDir: "{app}\mpv\scripts"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "..\mpv\mpv\*"; DestDir: "{app}\mpv\mpv"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 ; FFmpeg - Essential components only
 Source: "..\ffmpeg\bin\ffmpeg.exe"; DestDir: "{app}\ffmpeg\bin"; Flags: ignoreversion
