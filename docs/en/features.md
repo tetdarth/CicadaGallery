@@ -30,7 +30,6 @@ The free version includes many useful features.
 | ⭐ Favorites | Mark your favorite videos |
 | 🔍 Search | Search videos by title or tag |
 | 🔢 Sorting | Sort by date added, filename, or duration |
-| 👁️ Folder Watch | Auto-detect changes in registered folders |
 
 ### Display & Customization
 
@@ -52,7 +51,6 @@ The free version includes many useful features.
 | �💿 Auto Backup | Automatic database backup every 3 days |
 | 🔄 Manual Backup & Restore | Create and restore backups anytime |
 | 🗂️ 3-Generation Backup | Automatically manage latest 3 backups |
-| 📏 Window Size Memory | Save window size & position on exit |
 
 ### Playback Features
 
