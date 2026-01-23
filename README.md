@@ -1,124 +1,126 @@
-# CicadaGallery - 動画ギャラリープレイヤー
+[English](README.md) | [日本語](README.ja.md)
 
-Rust製の動画管理・再生アプリケーションです。MPVプレイヤーを使用して高品質な動画再生を実現します。
+# CicadaGallery - Video Gallery Player
 
-📖 **ドキュメント**: [https://tetdarth.github.io/CicadaGallery/](https://tetdarth.github.io/CicadaGallery/)
+A video management and playback application built with Rust. Achieves high-quality video playback using the MPV player.
 
-## 機能
+📖 **Documentation**: [https://www.cicadagallery.net/en/](https://www.cicadagallery.net/en/)
 
-### 基本機能（無料版）
-- 📁 **ファイル・ディレクトリ追加**: 動画ファイルを個別またはフォルダごとに追加
-- 🖱️ **ドラッグ＆ドロップ**: 動画やフォルダをドラッグ＆ドロップで追加
-- 🏷️ **タグ付け**: 動画にタグを付けて整理
-- ⭐ **お気に入り機能**: お気に入りの動画をマーク
-- 🔍 **検索機能**: タイトルやタグで動画を検索
-- 💾 **SQLiteデータベース**: 動画情報を軽量なSQLiteで管理
-- 🖼️ **サムネイル生成**: FFmpegによる自動サムネイル生成
-- 🎬 **シーン検出**: 動画のシーン変化を自動検出してサムネイル生成
-- 🌍 **多言語対応**: 英語、日本語、中国語に対応
-- 🎨 **カスタマイズ可能**: ダークモード、サムネイルサイズ調整など
-- 📺 **MPV統合**: 高性能なMPVプレイヤーで動画再生
-- 🔊 **音量設定**: デフォルト音量を設定可能
+## Features
 
-### プレミアム機能
-- ♾️ **無制限の動画登録**: 100本以上の動画を登録可能
-- ⭐ **1-5星評価**: 5段階の評価システム
-- 🎨 **GLSLシェーダー**: Anime4Kなどのカスタムシェーダー対応
-- 🖥️ **GPU高品質レンダリング**: MPVのgpu-hqプロファイル
-- ✅ **フォルダ/タグの複数選択**: 複数のフォルダやタグでフィルタリング
-- 🔀 **AND/ORフィルターモード**: タグのAND/OR条件切り替え
+### Basic Features (Free Version)
+- 📁 **Add Files/Directories**: Add video files individually or by folder
+- 🖱️ **Drag & Drop**: Add videos or folders via drag and drop
+- 🏷️ **Tagging**: Organize videos with tags
+- ⭐ **Favorites**: Mark your favorite videos
+- 🔍 **Search**: Search videos by title or tags
+- 💾 **SQLite Database**: Manage video information with lightweight SQLite
+- 🖼️ **Thumbnail Generation**: Automatic thumbnail generation with FFmpeg
+- 🎬 **Scene Detection**: Automatically detect scene changes and generate thumbnails
+- 🌍 **Multi-language Support**: English, Japanese, and Chinese
+- 🎨 **Customizable**: Dark mode, thumbnail size adjustment, and more
+- 📺 **MPV Integration**: Play videos with the high-performance MPV player
+- 🔊 **Volume Settings**: Set default volume
 
-## サポートする動画形式
+### Premium Features
+- ♾️ **Unlimited Video Registration**: Register more than 100 videos
+- ⭐ **1-5 Star Rating**: 5-level rating system
+- 🎨 **GLSL Shaders**: Support for custom shaders like Anime4K
+- 🖥️ **GPU High-Quality Rendering**: MPV's gpu-hq profile
+- ✅ **Multiple Folder/Tag Selection**: Filter by multiple folders or tags
+- 🔀 **AND/OR Filter Mode**: Toggle between AND/OR conditions for tags
+
+## Supported Video Formats
 
 MP4, AVI, MKV, MOV, WMV, FLV, WebM, M4V, MPG, MPEG
 
-## 依存関係
+## Dependencies
 
-このアプリケーションは以下の外部ツールを必要とします：
+This application requires the following external tools:
 
-### MPV (必須)
+### MPV (Required)
 
-動画再生にMPVを使用しています。プロジェクトの `mpv/` フォルダに同梱されています。
+MPV is used for video playback. It is bundled in the `mpv/` folder of the project.
 
-### FFmpeg (推奨)
+### FFmpeg (Recommended)
 
-サムネイル生成と動画解析に使用されます。プロジェクトの `ffmpeg/` フォルダに同梱されています。
+Used for thumbnail generation and video analysis. It is bundled in the `ffmpeg/` folder of the project.
 
-## 実行方法
+## How to Run
 
 ```bash
 cd CicadaGallery
 cargo run
 ```
 
-## ビルド
+## Build
 
-### 無料版（オープンソース）
+### Free Version (Open Source)
 ```bash
 cargo build --release
 ```
 
-> 公開リポジトリからビルドした場合、プレミアム機能は使用できません。
+> Premium features are not available when built from the public repository.
 
-実行可能ファイルは `target/release/cicada_gallery.exe` に生成されます。
+The executable will be generated at `target/release/cicada_gallery.exe`.
 
-## 使い方
+## Usage
 
-### 基本操作
-1. **ファイル追加**: トップバーの「📁 ファイル追加」ボタンをクリック、またはエクスプローラーからドラッグ&ドロップ
-2. **フォルダ追加**: トップバーの「📂 フォルダ追加」ボタンをクリック、またはエクスプローラーからドラッグ&ドロップ
-3. **動画再生**: サムネイルをクリック（MPVで再生）
-4. **複数選択**: Ctrl+クリックで複数選択、Shift+クリックで範囲選択
-5. **お気に入り**: ⭐ボタンをクリックしてお気に入りに追加
-6. **フィルタリング**: サイドバーでフォルダやタグでフィルタリング
-7. **表示切替**: グリッド表示とリスト表示を切り替え可能
+### Basic Operations
+1. **Add Files**: Click the "📁 Add Files" button in the top bar, or drag & drop from Explorer
+2. **Add Folder**: Click the "📂 Add Folder" button in the top bar, or drag & drop from Explorer
+3. **Play Video**: Click a thumbnail (plays with MPV)
+4. **Multiple Selection**: Ctrl+Click for multiple selection, Shift+Click for range selection
+5. **Favorites**: Click the ⭐ button to add to favorites
+6. **Filtering**: Filter by folders or tags in the sidebar
+7. **View Toggle**: Switch between grid view and list view
 
-### 管理機能
-- **フォルダ管理**: オプション → フォルダを管理... でフォルダの追加・削除
-- **タグ管理**: オプション → タグを管理... でタグの追加・削除
-- **シェーダー管理**: オプション → シェーダーを管理... でGLSLシェーダー選択 (プレミアム機能)
+### Management Features
+- **Folder Management**: Options → Manage Folders... to add/remove folders
+- **Tag Management**: Options → Manage Tags... to add/remove tags
+- **Shader Management**: Options → Manage Shaders... to select GLSL shaders (Premium feature)
 
-### キーボードショートカット（MPVプレイヤー内）
-- `Space`: 再生/一時停止
-- `←/→`: 5秒巻き戻し/早送り
-- `↑/↓`: 音量調整
-- `f`: フルスクリーン切替
-- `q`: プレイヤー終了
+### Keyboard Shortcuts (Inside MPV Player)
+- `Space`: Play/Pause
+- `←/→`: Rewind/Fast forward 5 seconds
+- `↑/↓`: Volume adjustment
+- `f`: Toggle fullscreen
+- `q`: Quit player
 
-## 技術スタック
+## Tech Stack
 
 - **GUI**: egui / eframe
-- **データベース**: SQLite (rusqlite)
-- **シリアライゼーション**: serde / serde_json
-- **ファイルダイアログ**: rfd
-- **日時処理**: chrono
-- **ファイル監視**: notify
-- **ライセンス認証**: ed25519-dalek
+- **Database**: SQLite (rusqlite)
+- **Serialization**: serde / serde_json
+- **File Dialog**: rfd
+- **Date/Time**: chrono
+- **File Watching**: notify
+- **License Authentication**: ed25519-dalek
 
-## データ保存場所
+## Data Storage Locations
 
-- **データベース**: `%LOCALAPPDATA%\CicadaGallery\database.db`
-- **設定ファイル**: `%LOCALAPPDATA%\CicadaGallery\settings.json`
-- **シーンキャッシュ**: `cache/scenes/`
+- **Database**: `%LOCALAPPDATA%\CicadaGallery\database.db`
+- **Settings File**: `%LOCALAPPDATA%\CicadaGallery\settings.json`
+- **Scene Cache**: `cache/scenes/`
 
-## 言語設定
+## Language Settings
 
-1. トップバーの「Options」（オプション）ボタンをクリック
-2. 「Language」セクションで希望の言語を選択
-   - English (英語)
-   - 日本語
-3. 設定は自動的に保存されます
+1. Click the "Options" button in the top bar
+2. Select your preferred language in the "Language" section
+   - English
+   - 日本語 (Japanese)
+3. Settings are saved automatically
 
-## ライセンス認証
+## License Activation
 
-プレミアム機能を利用するには、ライセンスキーが必要です。
+A license key is required to use premium features.
 
-1. 「ライセンスキーを入力」ボタンをクリック
-2. ライセンスキーを貼り付けて「有効化」をクリック
-3. 認証が成功するとプレミアム機能が有効になります
+1. Click the "Enter License Key" button
+2. Paste your license key and click "Activate"
+3. Premium features will be enabled upon successful authentication
 
-## 今後の拡張予定
+## Future Plans
 
-- プレイリスト機能
-- より詳細な検索・フィルタ機能
-- スマートコレクション
+- Playlist functionality
+- More detailed search and filter features
+- Smart collections
