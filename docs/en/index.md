@@ -39,7 +39,7 @@ Perfect for managing memories, creative work, or your collection.
 
 ## Screenshots
 
-![CicadaGallery Main Screen](../media/cicadagallery_img4_en.png)
+![CicadaGallery Main Screen](../media/CicadaGallery_img4_en.png)
 ![CicadaGallery mpv](../media/ss2.png)
 
 ---
