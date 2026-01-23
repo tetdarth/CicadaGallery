@@ -39,7 +39,7 @@ lang: ja
 
 ## スクリーンショット
 
-![CicadaGallery メイン画面](media/ss1.png)
+![CicadaGallery メイン画面](media/cicadagallery_img4.png)
 ![CicadaGallery mpv](media/ss2.png)
 
 ---
